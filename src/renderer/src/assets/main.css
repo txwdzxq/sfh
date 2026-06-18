@@ -1,0 +1,14 @@
+@import './base.css';
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #11111b;
+  user-select: none;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+}
