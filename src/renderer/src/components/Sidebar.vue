@@ -17,7 +17,11 @@ const emit = defineEmits<{
 <template>
   <div class="sidebar">
     <div class="sidebar-top">
-      <button class="sidebar-btn" :title="$t('sidebar.newConnection.title')" @click="emit('newConnection')">
+      <button
+        class="sidebar-btn"
+        :title="$t('sidebar.newConnection.title')"
+        @click="emit('newConnection')"
+      >
         <svg
           width="20"
           height="20"
@@ -60,7 +64,12 @@ const emit = defineEmits<{
       </button>
     </div>
     <div class="sidebar-bottom">
-      <button class="sidebar-btn" :class="{ active: queueActive }" :title="$t('sidebar.transfers.title')" @click="emit('queue')">
+      <button
+        class="sidebar-btn"
+        :class="{ active: queueActive }"
+        :title="$t('sidebar.transfers.title')"
+        @click="emit('queue')"
+      >
         <span class="queue-icon">↑↓</span>
         <span class="btn-label">{{ $t('sidebar.transfers.label') }}</span>
       </button>

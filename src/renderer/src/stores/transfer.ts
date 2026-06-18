@@ -71,5 +71,14 @@ export function useTransferStore() {
   const hasActive = computed(() => activeTransfers.value.length > 0)
   const items = computed(() => state.items)
 
-  return { state, items, activeTransfers, hasActive, addOrUpdate, markComplete, markError, clearCompleted }
+  return {
+    state,
+    items,
+    activeTransfers,
+    hasActive,
+    addOrUpdate,
+    markComplete,
+    markError,
+    clearCompleted
+  }
 }

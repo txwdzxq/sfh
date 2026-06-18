@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../build/icon.png?asset'
 import { registerSshIpc } from './ipc/ssh'
 import { registerStoreIpc, loadSettingsData, saveSettings, loadSettings } from './ipc/store'
 import { registerDialogIpc } from './ipc/dialog'
@@ -70,7 +70,7 @@ function createWindow(frame: boolean): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.sfh.app')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

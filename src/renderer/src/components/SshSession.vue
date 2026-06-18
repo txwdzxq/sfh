@@ -1,16 +1,14 @@
 <script setup lang="ts">
 // SSH 会话组件 — 管理连接生命周期：连接中 / 已连接 / 已断开 / 错误
 
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useConnectionStore } from '../stores/connection'
 import SshTerminal from './SshTerminal.vue'
-import FtpSession from './FtpSession.vue'
 import type { SshConnectionConfig } from '../../../main/ssh/types'
 
 const props = defineProps<{
   tabId: string
   config: SshConnectionConfig
-  forkFrom?: string
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +19,7 @@ const emit = defineEmits<{
 const status = ref<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting')
 const errorMsg = ref('')
 const terminalRef = ref<InstanceType<typeof SshTerminal>>()
+const { tabs } = useConnectionStore()
 
 /** 本地输入模式 */
 const localInput = ref('')
@@ -102,9 +101,10 @@ function handleInputKeydown(e: KeyboardEvent): void {
   if (e.key === 'ArrowUp') {
     e.preventDefault()
     if (inputHistory.value.length === 0) return
-    const newIdx = historyIndex.value === -1
-      ? inputHistory.value.length - 1
-      : Math.max(0, historyIndex.value - 1)
+    const newIdx =
+      historyIndex.value === -1
+        ? inputHistory.value.length - 1
+        : Math.max(0, historyIndex.value - 1)
     historyIndex.value = newIdx
     localInput.value = inputHistory.value[newIdx]
     return
@@ -135,19 +135,12 @@ onMounted(async () => {
     `[session] connecting tab=${props.tabId} ${props.config.username}@${props.config.host}:${props.config.port}`
   )
   try {
-    if (props.forkFrom) {
-      console.log(`[session] fork from ${props.forkFrom}`)
-      await window.api.forkShell(props.forkFrom, props.tabId)
-    } else {
-      await window.api.connect(props.tabId, { ...props.config })
-    }
+    await window.api.connect(props.tabId, { ...props.config })
     console.log(`[session] connected tab=${props.tabId}`)
     status.value = 'connected'
     emit('connected')
-    
-    // 触发更新
-    const { tabs } = useConnectionStore()
-    const tab = tabs.value.find(t => t.id === props.tabId)
+
+    const tab = tabs.value.find((t) => t.id === props.tabId)
     if (tab) tab.connected = true
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
@@ -157,6 +150,10 @@ onMounted(async () => {
     emit('error', message)
   }
 })
+
+onUnmounted(() => {
+  window.api.disconnect(props.tabId)
+})
 </script>
 
 <template>
@@ -165,11 +162,15 @@ onMounted(async () => {
       <span class="spinner"></span>
       {{ $t('sshSession.connecting', { host: config.host, port: config.port }) }}
     </div>
-    <div v-if="status === 'error'" class="status-bar error">{{ $t('sshSession.connectionFailed', { msg: errorMsg }) }}</div>
-    <div v-if="status === 'disconnected'" class="status-bar disconnected">{{ $t('sshSession.connectionClosed') }}</div>
+    <div v-if="status === 'error'" class="status-bar error">
+      {{ $t('sshSession.connectionFailed', { msg: errorMsg }) }}
+    </div>
+    <div v-if="status === 'disconnected'" class="status-bar disconnected">
+      {{ $t('sshSession.connectionClosed') }}
+    </div>
     <SshTerminal
+      v-if="status !== 'error'"
       ref="terminalRef"
-      v-if="status !== 'error' && !props.forkFrom"
       :tab-id="tabId"
       @connected="emit('connected')"
       @error="
@@ -181,12 +182,24 @@ onMounted(async () => {
       "
     />
     <!-- 本地输入模式 -->
-    <div v-if="status === 'connected' && !props.forkFrom" class="input-bar-wrapper">
+    <div v-if="status === 'connected'" class="input-bar-wrapper">
       <div v-if="showQuickCommands" class="quick-commands-panel">
         <div v-for="(cmd, i) in quickCommands" :key="i" class="quick-item">
           <span class="quick-cmd" @click="selectCommand(cmd, $event)">{{ cmd }}</span>
-          <button class="quick-send-btn" @click="sendCommand(cmd)" :title="$t('sshSession.quickCommand.send')">▶</button>
-          <button class="quick-del" @click="removeCommand(i)" :title="$t('sshSession.quickCommand.remove')">×</button>
+          <button
+            class="quick-send-btn"
+            :title="$t('sshSession.quickCommand.send')"
+            @click="sendCommand(cmd)"
+          >
+            ▶
+          </button>
+          <button
+            class="quick-del"
+            :title="$t('sshSession.quickCommand.remove')"
+            @click="removeCommand(i)"
+          >
+            ×
+          </button>
         </div>
         <div class="quick-add">
           <input
@@ -198,7 +211,14 @@ onMounted(async () => {
         </div>
       </div>
       <div class="local-input-bar">
-        <button class="quick-btn" :class="{ active: showQuickCommands }" @click="showQuickCommands = !showQuickCommands" :title="$t('sshSession.quickCommand.toggle')">⚡</button>
+        <button
+          class="quick-btn"
+          :class="{ active: showQuickCommands }"
+          :title="$t('sshSession.quickCommand.toggle')"
+          @click="showQuickCommands = !showQuickCommands"
+        >
+          ⚡
+        </button>
         <textarea
           ref="inputRef"
           v-model="localInput"
@@ -208,13 +228,11 @@ onMounted(async () => {
           @keydown="handleInputKeydown"
           @input="autoResizeInput"
         ></textarea>
-        <button class="send-btn" @click="sendLocalInput" :title="$t('sshSession.localInput.send')">⏎</button>
+        <button class="send-btn" :title="$t('sshSession.localInput.send')" @click="sendLocalInput">
+          ⏎
+        </button>
       </div>
     </div>
-    <FtpSession
-      v-if="status === 'connected' && props.forkFrom"
-      :tab-id="tabId"
-    />
   </div>
 </template>
 

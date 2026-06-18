@@ -56,12 +56,15 @@ async function copySelection() {
 }
 
 // 监听字体大小变化
-watch(() => settingsStore.state.settings.fontSize, (val) => {
-  if (terminal) {
-    terminal.options.fontSize = val
+watch(
+  () => settingsStore.state.settings.fontSize,
+  (val) => {
+    if (terminal) {
+      terminal.options.fontSize = val
+    }
+    nextTick(() => fitAddon?.fit())
   }
-  nextTick(() => fitAddon?.fit())
-})
+)
 
 /** 初始化 xterm.js 终端（Catppuccin 配色） */
 function initTerminal(): void {
@@ -127,49 +130,47 @@ function fitTerminal(): void {
   nextTick(() => fitAddon?.fit())
 }
 
-// IPC 事件监听器引用（用于 cleanup）
-let dataHandler: ((e: { id: string; data: string }) => void) | null = null
-let errorHandler: ((e: { id: string; message: string }) => void) | null = null
-let disconnectHandler: ((e: { id: string }) => void) | null = null
+const cleanups: (() => void)[] = []
 
 onMounted(() => {
   console.log(`[terminal] init tab=${props.tabId}`)
   initTerminal()
   window.addEventListener('click', closeMenu)
 
-  // 注册主进程数据推送监听
-  dataHandler = (e: { id: string; data: string }) => {
-    if (e.id === props.tabId) {
-      terminal?.write(e.data)
-    }
-  }
+  // 注册主进程数据推送监听（返回清理函数）
+  cleanups.push(
+    window.api.onData((e: { id: string; data: string }) => {
+      if (e.id === props.tabId) {
+        terminal?.write(e.data)
+      }
+    })
+  )
 
-  errorHandler = (e: { id: string; message: string }) => {
-    if (e.id === props.tabId) {
-      console.error(`[terminal] error tab=${e.id}: ${e.message}`)
-      terminal?.writeln(`\r\n\x1b[31m${t('sshTerminal.errorPrefix')}${e.message}\x1b[0m`)
-      emit('error', e.message)
-    }
-  }
+  cleanups.push(
+    window.api.onError((e: { id: string; message: string }) => {
+      if (e.id === props.tabId) {
+        console.error(`[terminal] error tab=${e.id}: ${e.message}`)
+        terminal?.writeln(`\r\n\x1b[31m${t('sshTerminal.errorPrefix')}${e.message}\x1b[0m`)
+        emit('error', e.message)
+      }
+    })
+  )
 
-  disconnectHandler = (e: { id: string }) => {
-    if (e.id === props.tabId) {
-      console.log(`[terminal] disconnected tab=${e.id}`)
-      terminal?.writeln(`\r\n\x1b[33m${t('sshTerminal.connectionClosed')}\x1b[0m`)
-    }
-  }
-
-  window.api.onData(dataHandler)
-  window.api.onError(errorHandler)
-  window.api.onDisconnect(disconnectHandler)
+  cleanups.push(
+    window.api.onDisconnect((e: { id: string }) => {
+      if (e.id === props.tabId) {
+        console.log(`[terminal] disconnected tab=${e.id}`)
+        terminal?.writeln(`\r\n\x1b[33m${t('sshTerminal.connectionClosed')}\x1b[0m`)
+      }
+    })
+  )
 
   window.addEventListener('resize', fitTerminal)
 })
 
 onUnmounted(() => {
-  // 清理：移除监听器、释放终端、清除定时器
   if (resizeTimer) clearTimeout(resizeTimer)
-  window.api.removeAllListeners()
+  cleanups.forEach((fn) => fn())
   terminal?.dispose()
   terminal = null
   window.removeEventListener('resize', fitTerminal)

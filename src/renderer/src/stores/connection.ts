@@ -1,7 +1,7 @@
 // 全局状态管理 — 管理标签页、已保存连接、会话面板状态
 // 使用 reactive + toRefs 模式保持响应式解构
 
-import { reactive, toRefs, toRaw } from 'vue'
+import { reactive, toRefs } from 'vue'
 import type { SshConnection, SshConnectionConfig } from '../../../main/ssh/types'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -13,16 +13,7 @@ export interface Tab {
   ftpConnected: boolean
   loading: boolean
   error: string | null
-  forkFrom?: string
   subTab: 'ssh' | 'ftp'
-}
-
-interface SavedConnectionData {
-  id: string
-  name: string
-  config: SshConnectionConfig
-  group?: string
-  createdAt: number
 }
 
 const state = reactive({
@@ -34,7 +25,7 @@ const state = reactive({
 
 export function useConnectionStore() {
   /** 添加新标签页 */
-  function addTab(config: SshConnectionConfig, name: string, forkFrom?: string): Tab {
+  function addTab(config: SshConnectionConfig, name: string): Tab {
     const id = uuidv4()
     const tab: Tab = {
       id,
@@ -44,7 +35,6 @@ export function useConnectionStore() {
       ftpConnected: false,
       loading: false,
       error: null,
-      forkFrom,
       subTab: 'ssh'
     }
     state.tabs.push(tab)
@@ -78,10 +68,6 @@ export function useConnectionStore() {
     if (fromIndex === toIndex) return
     const [tab] = state.tabs.splice(fromIndex, 1)
     state.tabs.splice(toIndex, 0, tab)
-  }
-
-  function getActiveTab(): Tab | undefined {
-    return state.tabs.find((t) => t.id === state.activeTabId)
   }
 
   function toggleSessions(): void {
@@ -143,6 +129,14 @@ export function useConnectionStore() {
     await saveToDisk()
   }
 
+  /** 移动已保存连接（拖拽排序） */
+  async function moveSavedConnection(fromIndex: number, toIndex: number): Promise<void> {
+    if (fromIndex === toIndex) return
+    const [conn] = state.savedConnections.splice(fromIndex, 1)
+    state.savedConnections.splice(toIndex, 0, conn)
+    await saveToDisk()
+  }
+
   /** 删除连接 */
   async function deleteConnection(id: string): Promise<void> {
     const idx = state.savedConnections.findIndex((c) => c.id === id)
@@ -154,7 +148,7 @@ export function useConnectionStore() {
 
   /** 持久化到磁盘 */
   async function saveToDisk(): Promise<void> {
-    const plain = state.savedConnections.map(c => toRaw(c))
+    const plain = state.savedConnections.map((c) => JSON.parse(JSON.stringify(c)))
     await window.api.saveConnections(plain)
   }
 
@@ -163,12 +157,12 @@ export function useConnectionStore() {
     addTab,
     removeTab,
     setActiveTab,
-    getActiveTab,
     toggleSessions,
     closeSessions,
     loadSavedConnections,
     saveConnectionByConfig,
     moveTab,
+    moveSavedConnection,
     setSubTab,
     updateConnection,
     deleteConnection,

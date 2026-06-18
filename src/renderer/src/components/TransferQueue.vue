@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useTransferStore, TransferItem } from '../stores/transfer'
 
 const { items, addOrUpdate, markComplete, markError, clearCompleted } = useTransferStore()
@@ -30,16 +30,28 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const cleanups: (() => void)[] = []
+
 onMounted(() => {
-  window.api.onTransferProgress((data) => {
-    addOrUpdate(data)
-  })
-  window.api.onTransferComplete((data) => {
-    markComplete(data.id)
-  })
-  window.api.onTransferError((data) => {
-    markError(data.id, data.error)
-  })
+  cleanups.push(
+    window.api.onTransferProgress((data) => {
+      addOrUpdate(data)
+    })
+  )
+  cleanups.push(
+    window.api.onTransferComplete((data) => {
+      markComplete(data.id)
+    })
+  )
+  cleanups.push(
+    window.api.onTransferError((data) => {
+      markError(data.id, data.error)
+    })
+  )
+})
+
+onUnmounted(() => {
+  cleanups.forEach((fn) => fn())
 })
 </script>
 
@@ -55,7 +67,18 @@ onMounted(() => {
         :class="{ active: activeTab === 'upload' }"
         @click="activeTab = 'upload'"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
         {{ $t('transferQueue.tab.uploads') }}
         <span class="tab-count">{{ items.filter((i) => i.type === 'upload').length }}</span>
       </button>
@@ -64,13 +87,30 @@ onMounted(() => {
         :class="{ active: activeTab === 'download' }"
         @click="activeTab = 'download'"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 8 12 3 17 8" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 8 12 3 17 8" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
         {{ $t('transferQueue.tab.downloads') }}
         <span class="tab-count">{{ items.filter((i) => i.type === 'download').length }}</span>
       </button>
     </div>
     <div class="queue-list">
-      <div v-if="filteredItems.length === 0" class="queue-empty">{{ activeTab === 'upload' ? $t('transferQueue.empty.uploads') : $t('transferQueue.empty.downloads') }}</div>
+      <div v-if="filteredItems.length === 0" class="queue-empty">
+        {{
+          activeTab === 'upload'
+            ? $t('transferQueue.empty.uploads')
+            : $t('transferQueue.empty.downloads')
+        }}
+      </div>
       <div
         v-for="item in filteredItems"
         :key="item.id"
@@ -79,8 +119,12 @@ onMounted(() => {
       >
         <div class="queue-item-top">
           <span class="queue-filename">{{ item.filename }}</span>
-          <span v-if="item.status === 'completed'" class="queue-status done">{{ $t('transferQueue.status.done') }}</span>
-          <span v-else-if="item.status === 'error'" class="queue-status err">{{ $t('transferQueue.status.error') }}</span>
+          <span v-if="item.status === 'completed'" class="queue-status done">{{
+            $t('transferQueue.status.done')
+          }}</span>
+          <span v-else-if="item.status === 'error'" class="queue-status err">{{
+            $t('transferQueue.status.error')
+          }}</span>
           <span v-else class="queue-pct">{{ progressPercent(item) }}%</span>
         </div>
         <div class="queue-bar-track">
@@ -98,7 +142,9 @@ onMounted(() => {
       </div>
     </div>
     <div v-if="filteredItems.length > 0" class="queue-footer">
-      <button class="queue-clear-btn" @click="clearCompleted">{{ $t('transferQueue.clearCompleted') }}</button>
+      <button class="queue-clear-btn" @click="clearCompleted">
+        {{ $t('transferQueue.clearCompleted') }}
+      </button>
     </div>
   </div>
 </template>
@@ -159,7 +205,9 @@ onMounted(() => {
   font-size: 12px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .queue-tab:hover {

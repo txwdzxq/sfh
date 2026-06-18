@@ -5,7 +5,7 @@ import { ref, computed, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from '../stores/connection'
 import { sshService } from '../services/sshService'
-import type { SftpEntry } from '../../../main/ssh/manager'
+import type { SftpEntry } from '../../../main/ssh/types'
 
 const props = defineProps<{
   tabId: string
@@ -79,19 +79,20 @@ async function loadDir(path: string): Promise<void> {
     if (path === '.') {
       targetPath = await sshService.realpath(props.tabId, '.')
     } else if (!path.startsWith('/')) {
-      const currentBase = currentPath.value === '.' ? await sshService.realpath(props.tabId, '.') : currentPath.value
+      const currentBase =
+        currentPath.value === '.' ? await sshService.realpath(props.tabId, '.') : currentPath.value
       targetPath = currentBase + '/' + path
     }
-    
+
     // 更新 FTP 连接状态
-    const tab = tabs.value.find(t => t.id === props.tabId)
+    const tab = tabs.value.find((t) => t.id === props.tabId)
     if (tab) tab.ftpConnected = true
 
     const list = await sshService.readdir(props.tabId, targetPath)
-    
+
     // 读取成功后，更新路径为服务器真正返回的绝对路径，用于面包屑显示
     currentPath.value = await sshService.realpath(props.tabId, targetPath)
-    
+
     // 过滤掉 . 和 ..
     const filtered = list.filter((e) => e.filename !== '.' && e.filename !== '..')
     // 目录排前，文件排后
@@ -110,7 +111,7 @@ async function loadDir(path: string): Promise<void> {
     entries.value = []
 
     // 连接失败更新状态
-    const tab = tabs.value.find(t => t.id === props.tabId)
+    const tab = tabs.value.find((t) => t.id === props.tabId)
     if (tab) tab.ftpConnected = false
   } finally {
     loading.value = false
@@ -120,7 +121,8 @@ async function loadDir(path: string): Promise<void> {
 /** 点击条目 */
 function handleClick(entry: SftpEntry): void {
   if (entry.type === 'directory') {
-    const path = currentPath.value === '.' ? entry.filename : currentPath.value + '/' + entry.filename
+    const path =
+      currentPath.value === '.' ? entry.filename : currentPath.value + '/' + entry.filename
     loadDir(path)
   } else {
     handleDownload(entry.filename)
@@ -175,6 +177,11 @@ function onDragLeave(): void {
   }
 }
 
+function onContainerDragEnd(): void {
+  dragOver.value = false
+  dragCounter = 0
+}
+
 async function onDrop(e: DragEvent): Promise<void> {
   e.preventDefault()
   dragCounter = 0
@@ -198,7 +205,7 @@ async function onDrop(e: DragEvent): Promise<void> {
       await sshService.uploadFile(props.tabId, localPath, remotePath)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      errorMsg.value = `Upload failed: ${file.name} — ${msg}`
+      errorMsg.value = t('ftpSession.uploadFailed', { name: file.name, msg })
     }
   }
   loadDir(remoteDir)
@@ -221,7 +228,7 @@ function onDragEnd(entry: SftpEntry): void {
 function startEditing(e: MouseEvent): void {
   // 只有点击路径栏空白区域（而非 crumb 或 sep）时才触发编辑
   if (e.target !== e.currentTarget) return
-  
+
   editInput.value = currentPath.value === '.' ? '' : currentPath.value
   editing.value = true
   nextTick(() => editRef.value?.focus())
@@ -230,21 +237,21 @@ function startEditing(e: MouseEvent): void {
 /** 提交路径编辑 */
 function commitEdit(): void {
   let raw = editInput.value.replace(/\\/g, '/').trim()
-  
+
   // Preserve leading slash if it's an absolute path
   const isAbsolute = raw.startsWith('/')
-  
+
   // Remove trailing slashes
   raw = raw.replace(/\/+$/, '')
-  
+
   if (!isAbsolute) {
     // For relative paths, remove leading slashes
     raw = raw.replace(/^\/+/, '')
   }
-  
+
   // If absolute and empty, it's root '/'. Otherwise use raw or default to '.'
-  const sanitized = (isAbsolute && raw === '') ? '/' : (raw || '.')
-  
+  const sanitized = isAbsolute && raw === '' ? '/' : raw || '.'
+
   editing.value = false
   if (sanitized !== currentPath.value) {
     loadDir(sanitized)
@@ -271,7 +278,16 @@ onMounted(() => {
     <!-- 路径导航 -->
     <div class="ftp-toolbar">
       <button class="toolbar-btn" :disabled="currentPath === '.'" @click="goUp">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="M15 18l-6-6 6-6" />
         </svg>
         {{ $t('ftpSession.goUp') }}
@@ -282,18 +298,23 @@ onMounted(() => {
         :title="showHidden ? $t('ftpSession.hideDotfiles') : $t('ftpSession.showDotfiles')"
         @click="showHidden = !showHidden"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <circle cx="12" cy="12" r="2" />
           <path d="M22 12c0 4-4.5 8-10 8S2 16 2 12s4.5-8 10-8 10 3.5 10 8Z" />
           <line v-show="!showHidden" x1="2" y1="2" x2="22" y2="22" />
         </svg>
       </button>
       <!-- 面包屑导航 / 路径编辑 -->
-      <div
-        class="path-bar"
-        :class="{ editing }"
-        @click="startEditing($event)"
-      >
+      <div class="path-bar" :class="{ editing }" @click="startEditing($event)">
         <template v-if="editing">
           <input
             ref="editRef"
@@ -306,21 +327,47 @@ onMounted(() => {
           />
         </template>
         <template v-else>
-          <span class="crumb root" :class="{ active: segments.length === 0 }" @click="loadDir('/')">{{ $t('ftpSession.rootCrumb') }}</span>
+          <span
+            class="crumb root"
+            :class="{ active: segments.length === 0 }"
+            @click="loadDir('/')"
+            >{{ $t('ftpSession.rootCrumb') }}</span
+          >
           <template v-for="(seg, i) in segments" :key="i">
             <span class="crumb-sep">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#585b70" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#585b70"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
             </span>
             <span
               class="crumb"
               :class="{ active: i === segments.length - 1 }"
               @click="loadDir(seg.path)"
-            >{{ seg.name }}</span>
+              >{{ seg.name }}</span
+            >
           </template>
         </template>
       </div>
       <button class="toolbar-btn" @click="handleUpload">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <polyline points="17 8 12 3 7 8" />
           <line x1="12" y1="3" x2="12" y2="15" />
@@ -328,7 +375,16 @@ onMounted(() => {
         {{ $t('ftpSession.upload') }}
       </button>
       <button class="toolbar-btn refresh-btn" @click="loadDir(currentPath)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
           <polyline points="23 4 23 10 17 10" />
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
         </svg>
@@ -343,7 +399,7 @@ onMounted(() => {
       @dragover="onDragOver"
       @dragleave="onDragLeave"
       @drop="onDrop"
-      @dragend="dragOver = false; dragCounter = 0"
+      @dragend="onContainerDragEnd"
     >
       <div v-if="loading && visibleEntries.length === 0" class="ftp-loading">
         <span class="spinner"></span>
@@ -354,25 +410,49 @@ onMounted(() => {
         :key="entry.filename"
         class="ftp-item"
         :class="{ dir: entry.type === 'directory' }"
-        @click="handleClick(entry)"
         :draggable="entry.type === 'file'"
+        @click="handleClick(entry)"
         @dragstart="onDragStart($event, entry)"
         @dragend="onDragEnd(entry)"
       >
         <span class="item-icon">
-          <svg v-if="entry.type === 'directory'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#89b4fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            v-if="entry.type === 'directory'"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#89b4fa"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a6adc8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            v-else
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#a6adc8"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
           </svg>
         </span>
         <span class="item-name">{{ entry.filename }}</span>
-        <span class="item-size">{{ entry.type === 'directory' ? '-' : formatSize(entry.size) }}</span>
+        <span class="item-size">{{
+          entry.type === 'directory' ? '-' : formatSize(entry.size)
+        }}</span>
         <span class="item-date">{{ formatTime(entry.mtime) }}</span>
       </div>
-      <div v-if="visibleEntries.length === 0 && !loading && !errorMsg" class="ftp-empty">{{ $t('ftpSession.emptyDirectory') }}</div>
+      <div v-if="visibleEntries.length === 0 && !loading && !errorMsg" class="ftp-empty">
+        {{ $t('ftpSession.emptyDirectory') }}
+      </div>
       <!-- 加载中覆盖层 -->
       <div v-if="loading && visibleEntries.length > 0" class="ftp-loading-overlay">
         <span class="spinner"></span>

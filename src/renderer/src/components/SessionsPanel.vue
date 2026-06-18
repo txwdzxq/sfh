@@ -1,20 +1,51 @@
 <script setup lang="ts">
 // 会话列表面板 — 浮动显示已保存的连接，支持选择连接、编辑和删除
 
+import { ref } from 'vue'
 import type { SshConnection } from '../../../main/ssh/types'
 
-defineProps<{
+const props = defineProps<{
   sessions: SshConnection[]
 }>()
 
 const emit = defineEmits<{
-  select: [session: SshConnection] // 点击连接打开
-  edit: [session: SshConnection]   // 编辑连接
+  select: [session: SshConnection]
+  edit: [session: SshConnection]
   delete: [id: string]
   close: []
   export: []
   import: []
+  reorder: [fromIndex: number, toIndex: number]
 }>()
+
+const dragIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
+
+function onDragStart(index: number): void {
+  dragIndex.value = index
+}
+
+function onDragOver(index: number): void {
+  if (dragIndex.value === null || dragIndex.value === index) return
+  dragOverIndex.value = index
+}
+
+function onDragLeave(): void {
+  dragOverIndex.value = null
+}
+
+function onDrop(index: number): void {
+  if (dragIndex.value !== null && dragIndex.value !== index) {
+    emit('reorder', dragIndex.value, index)
+  }
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
+
+function onDragEnd(): void {
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
 </script>
 
 <template>
@@ -24,8 +55,12 @@ const emit = defineEmits<{
     <div class="panel-header">
       <span class="panel-title">{{ $t('sessionsPanel.title') }}</span>
       <div class="header-actions">
-        <button class="header-btn" :title="$t('sessionsPanel.export')" @click="emit('export')">⤊</button>
-        <button class="header-btn" :title="$t('sessionsPanel.import')" @click="emit('import')">⤋</button>
+        <button class="header-btn" :title="$t('sessionsPanel.export')" @click="emit('export')">
+          ⤊
+        </button>
+        <button class="header-btn" :title="$t('sessionsPanel.import')" @click="emit('import')">
+          ⤋
+        </button>
         <button class="close-btn" @click="emit('close')">&times;</button>
       </div>
     </div>
@@ -50,9 +85,16 @@ const emit = defineEmits<{
       </div>
       <!-- 会话列表 -->
       <div
-        v-for="session in sessions"
+        v-for="(session, index) in sessions"
         :key="session.id"
         class="session-item"
+        :class="{ 'drag-over-top': dragOverIndex === index && dragIndex !== null && dragIndex > index, 'drag-over-bottom': dragOverIndex === index && dragIndex !== null && dragIndex < index }"
+        draggable="true"
+        @dragstart="onDragStart(index)"
+        @dragover.prevent="onDragOver(index)"
+        @dragleave="onDragLeave"
+        @drop="onDrop(index)"
+        @dragend="onDragEnd"
       >
         <div class="session-icon">
           <svg
@@ -78,13 +120,30 @@ const emit = defineEmits<{
         </div>
         <!-- hover 显示的操作按钮 -->
         <div class="session-actions">
-          <button class="edit-btn" :title="$t('sessionsPanel.edit')" @click.stop="emit('edit', session)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button
+            class="edit-btn"
+            :title="$t('sessionsPanel.edit')"
+            @click.stop="emit('edit', session)"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
           </button>
-          <button class="delete-btn" :title="$t('sessionsPanel.delete')" @click.stop="emit('delete', session.id)">
+          <button
+            class="delete-btn"
+            :title="$t('sessionsPanel.delete')"
+            @click.stop="emit('delete', session.id)"
+          >
             &times;
           </button>
         </div>
@@ -212,6 +271,14 @@ const emit = defineEmits<{
   background: #313244;
 }
 
+.session-item.drag-over-top {
+  border-top: 2px solid #89b4fa;
+}
+
+.session-item.drag-over-bottom {
+  border-bottom: 2px solid #89b4fa;
+}
+
 .session-icon {
   flex-shrink: 0;
   color: #6c7086;
@@ -262,7 +329,9 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .edit-btn:hover {

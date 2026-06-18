@@ -1,6 +1,6 @@
 // 存储 IPC 处理器 — 持久化连接、设置、标签状态到 JSON 文件
 
-import { ipcMain } from 'electron'
+import { ipcMain, safeStorage } from 'electron'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
@@ -21,7 +21,6 @@ export interface AppSettings {
 interface SavedTab {
   name: string
   config: SshConnectionConfig
-  forkFrom?: string
 }
 
 interface SettingsData {
@@ -51,17 +50,38 @@ function getSettingsPath(): string {
 
 /** 从磁盘加载已保存的连接列表 */
 function loadConnections(): SshConnection[] {
+  const filePath = getStorePath()
+  if (!existsSync(filePath)) return []
+  // 先尝试以明文读取（兼容旧版本未加密的 connections.json）
   try {
-    const data = readFileSync(getStorePath(), 'utf-8')
-    return JSON.parse(data)
+    const text = readFileSync(filePath, 'utf-8')
+    const data = JSON.parse(text)
+    return data
   } catch {
+    // 明文读取失败，尝试用 safeStorage 解密
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const encrypted = readFileSync(filePath)
+        const decrypted = safeStorage.decryptString(encrypted)
+        return JSON.parse(decrypted)
+      } catch {
+        // 解密也失败，返回空数组
+      }
+    }
     return []
   }
 }
 
-/** 将连接列表写入磁盘 */
+/** 将连接列表写入磁盘（加密存储） */
 function saveConnections(connections: SshConnection[]): void {
-  writeFileSync(getStorePath(), JSON.stringify(connections, null, 2))
+  const json = JSON.stringify(connections, null, 2)
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(json)
+    writeFileSync(getStorePath(), encrypted)
+  } else {
+    console.warn('[store] safeStorage not available, saving credentials in plain text')
+    writeFileSync(getStorePath(), json, 'utf-8')
+  }
 }
 
 export function loadSettings(): SettingsData {
@@ -69,7 +89,19 @@ export function loadSettings(): SettingsData {
     const data = readFileSync(getSettingsPath(), 'utf-8')
     return JSON.parse(data)
   } catch {
-    return { settings: { reopenTabs: false, autoFtp: false, useSystemTitleBar: true, fontSize: 14, zoom: 1, locale: 'zh-CN', windowWidth: 900, windowHeight: 670 }, tabs: [] }
+    return {
+      settings: {
+        reopenTabs: false,
+        autoFtp: false,
+        useSystemTitleBar: true,
+        fontSize: 14,
+        zoom: 1,
+        locale: 'zh-CN',
+        windowWidth: 900,
+        windowHeight: 670
+      },
+      tabs: []
+    }
   }
 }
 
@@ -83,7 +115,16 @@ export function loadSettingsData(): AppSettings {
     const data = readFileSync(getSettingsPath(), 'utf-8')
     return JSON.parse(data).settings
   } catch {
-    return { reopenTabs: false, autoFtp: false, useSystemTitleBar: true, fontSize: 14, zoom: 1, locale: 'zh-CN', windowWidth: 900, windowHeight: 670 }
+    return {
+      reopenTabs: false,
+      autoFtp: false,
+      useSystemTitleBar: true,
+      fontSize: 14,
+      zoom: 1,
+      locale: 'zh-CN',
+      windowWidth: 900,
+      windowHeight: 670
+    }
   }
 }
 
@@ -103,10 +144,7 @@ export function registerStoreIpc(): void {
     return loadSettings()
   })
 
-  ipcMain.handle(
-    'store:saveSettings',
-    async (_event, data: SettingsData): Promise<void> => {
-      saveSettings(data)
-    }
-  )
+  ipcMain.handle('store:saveSettings', async (_event, data: SettingsData): Promise<void> => {
+    saveSettings(data)
+  })
 }

@@ -1,7 +1,6 @@
-import { SshConnectionConfig } from './types'
+import { SshConnectionConfig, SftpEntry } from './types'
 import { SSHShellManager } from './shell.manager'
 import { SFTPManager } from './sftp.manager'
-import { SftpEntry } from './manager'
 
 export class SshManager {
   private shellManager: SSHShellManager
@@ -24,15 +23,6 @@ export class SshManager {
 
   async connect(id: string, config: SshConnectionConfig): Promise<void> {
     await this.shellManager.connect(id, config)
-  }
-
-  async forkShell(sourceId: string, newId: string): Promise<void> {
-    // 简化实现：重用现有的 client
-    const session = this.shellManager.getSession(sourceId)
-    if (!session) throw new Error('Source session not found')
-    // 在实际代码中，SSHShellManager 需要实现 forkShell 逻辑
-    // 为了兼容，这里仅做代理调用，后续可在 ShellManager 中实现
-    await (this.shellManager as any).forkShell?.(sourceId, newId)
   }
 
   write(id: string, data: string): void {
@@ -59,12 +49,22 @@ export class SshManager {
   async realpath(id: string, path: string): Promise<string> {
     return await this.sftpManager.realpath(id, path)
   }
-  
-  async upload(id: string, localPath: string, remotePath: string, onProgress?: (t: number, total: number) => void): Promise<void> {
+
+  async upload(
+    id: string,
+    localPath: string,
+    remotePath: string,
+    onProgress?: (t: number, total: number) => void
+  ): Promise<void> {
     return await this.sftpManager.upload(id, localPath, remotePath, onProgress)
   }
-  
-  async download(id: string, remotePath: string, localPath: string, onProgress?: (t: number, total: number) => void): Promise<void> {
+
+  async download(
+    id: string,
+    remotePath: string,
+    localPath: string,
+    onProgress?: (t: number, total: number) => void
+  ): Promise<void> {
     return await this.sftpManager.download(id, remotePath, localPath, onProgress)
   }
 }

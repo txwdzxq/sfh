@@ -1,27 +1,49 @@
 <script setup lang="ts">
 // 设置对话框 — 通用 / 显示 / 终端 三个标签页
 
-import { ref, onMounted, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 
 const emit = defineEmits<{
   close: []
+  zoomDrag: [factor: number]
+  zoomApply: [factor: number]
 }>()
 
 type Tab = 'general' | 'display' | 'terminal'
 const activeTab = ref<Tab>('general')
 const show = ref(true)
-const { state, setReopenTabs, setAutoFtp, setUseSystemTitleBar, setLocale, setFontSize, setZoom, flush } = useSettingsStore()
+const {
+  state,
+  setReopenTabs,
+  setAutoFtp,
+  setUseSystemTitleBar,
+  setLocale,
+  setFontSize,
+  setZoom,
+  flush
+} = useSettingsStore()
 const { locale } = useI18n()
 
 // 使用本地 ref 确保滑块与显示值实时响应
 const fontSize = ref(state.settings.fontSize)
 const zoom = ref(Math.round(state.settings.zoom * 100))
+const sliderDragging = ref(false)
 
 // 监听 store 变化，同步本地 ref（解决会话存在时设置不同步的问题）
-watch(() => state.settings.fontSize, (val) => { fontSize.value = val })
-watch(() => state.settings.zoom, (val) => { zoom.value = Math.round(val * 100) })
+watch(
+  () => state.settings.fontSize,
+  (val) => {
+    fontSize.value = val
+  }
+)
+watch(
+  () => state.settings.zoom,
+  (val) => {
+    zoom.value = Math.round(val * 100)
+  }
+)
 
 async function close(): Promise<void> {
   await flush()
@@ -35,25 +57,33 @@ function onLocaleChange(val: string): void {
 }
 
 function onFontSizeInput(val: number): void {
-  fontSize.value = val
-  setFontSize(val)
+  const v = Math.max(8, Math.min(32, Math.round(val)))
+  fontSize.value = v
+  setFontSize(v)
 }
 
 function onFontSizeChange(delta: number): void {
-  const v = Math.max(8, Math.min(32, fontSize.value + delta))
-  onFontSizeInput(v)
-  setFontSize(v)
+  onFontSizeInput(fontSize.value + delta)
 }
 
 function onZoomChange(delta: number): void {
   const v = Math.max(100, Math.min(300, zoom.value + delta * 100))
-  zoom.value = v
-  setZoom(v / 100)
+  zoom.value = Math.round(v)
+  const factor = Math.round(v) / 100
+  setZoom(factor)
+  try { window.api.setZoomFactor(factor) } catch (e) { console.error('[settings] setZoomFactor failed:', e) }
 }
 
-onMounted(() => {
-  // settings 从磁盘加载后，locale 通过 App.vue 初始化，无需额外操作
-})
+function onZoomDrag(): void {
+  emit('zoomDrag', zoom.value / 100)
+}
+
+function onZoomRelease(): void {
+  sliderDragging.value = false
+  const factor = zoom.value / 100
+  setZoom(factor)
+  emit('zoomApply', factor)
+}
 </script>
 
 <template>
@@ -129,33 +159,35 @@ onMounted(() => {
               <span>{{ $t('settingsDialog.useSystemTitleBar') }}</span>
             </label>
             <div class="setting-row">
-              <label class="setting-label">缩放</label>
+              <label class="setting-label">{{ $t('settingsDialog.display.zoom') }}</label>
               <input
+                v-model.number="zoom"
                 type="range"
                 class="setting-slider"
                 min="100"
                 max="300"
                 step="10"
-                v-model.number="zoom"
-                @change="setZoom(zoom / 100)"
+                @mousedown="sliderDragging = true"
+                @input="onZoomDrag()"
+                @change="onZoomRelease()"
               />
               <span class="setting-value">{{ zoom }}%</span>
               <button class="step-btn" @click="onZoomChange(-0.1)">−</button>
               <button class="step-btn" @click="onZoomChange(0.1)">+</button>
             </div>
           </div>
-            <!-- 终端 -->
+          <!-- 终端 -->
           <div v-if="activeTab === 'terminal'" class="tab-content">
             <div class="setting-row">
-              <label class="setting-label">字体大小</label>
+              <label class="setting-label">{{ $t('settingsDialog.terminal.fontSize') }}</label>
               <input
+                v-model.number="fontSize"
                 type="range"
                 class="setting-slider"
                 min="8"
                 max="32"
                 step="1"
-                v-model.number="fontSize"
-                @input="setFontSize(fontSize)"
+                @input="onFontSizeInput(fontSize)"
               />
               <span class="setting-value">{{ fontSize }}px</span>
               <button class="step-btn" @click="onFontSizeChange(-1)">−</button>
@@ -184,6 +216,9 @@ onMounted(() => {
 }
 
 .dialog {
+  margin: auto;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: #1e1e2e;
   border: 1px solid #313244;
   border-radius: 8px;
@@ -230,7 +265,9 @@ onMounted(() => {
   color: #6c7086;
   font-size: 13px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .tab-btn:hover {

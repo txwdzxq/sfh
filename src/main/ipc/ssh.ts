@@ -5,6 +5,31 @@ import * as path from 'path'
 import { sshManager } from '../ssh/manager'
 import { SshConnectionConfig } from '../ssh/types'
 
+/** 验证 SSH 连接配置 */
+function validateConfig(config: SshConnectionConfig): void {
+  if (!config || typeof config !== 'object') throw new Error('Invalid config')
+  if (!config.host || typeof config.host !== 'string') throw new Error('Invalid host')
+  if (!config.port || typeof config.port !== 'number' || config.port < 1 || config.port > 65535)
+    throw new Error('Invalid port')
+  if (!config.username || typeof config.username !== 'string') throw new Error('Invalid username')
+}
+
+/** 验证远程路径（防止空路径） */
+function validateRemotePath(p: string): void {
+  if (!p || typeof p !== 'string') throw new Error('Invalid path')
+}
+
+/** 清理 ssh2 错误消息，防止泄漏敏感信息 */
+function sanitizeSshError(err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (msg.includes('connect ECONNREFUSED') || msg.includes('connect EHOSTUNREACH')) return new Error('Connection refused')
+  if (msg.includes('Timed out')) return new Error('Connection timed out')
+  if (msg.includes('Authentication') && msg.includes('failed')) return new Error('Authentication failed')
+  if (msg.includes('ENOENT') || msg.includes('No such file')) return new Error('Remote path not found')
+  if (msg.includes('Permission denied')) return new Error('Permission denied')
+  return err instanceof Error ? err : new Error(msg)
+}
+
 /** 生成简短唯一传输 ID */
 function transferId(): string {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
@@ -81,110 +106,137 @@ export function registerSshIpc(): void {
   ipcMain.handle(
     'ssh:connect',
     async (_event, id: string, config: SshConnectionConfig): Promise<void> => {
-      console.log(`[ipc] ssh:connect id=${id} ${config.username}@${config.host}:${config.port}`)
-      await sshManager.connect(id, config)
+      if (!id || typeof id !== 'string') throw new Error('Invalid id')
+      validateConfig(config)
+      console.log(`[ipc] ssh:connect id=${id}`)
+      try {
+        await sshManager.connect(id, config)
+      } catch (err) {
+        throw sanitizeSshError(err)
+      }
     }
   )
 
   // send/on 模式：写入、调整尺寸、断开（无需等待结果）
   ipcMain.on('ssh:write', (_event, id: string, data: string) => {
+    if (!id || typeof id !== 'string') return
     sshManager.write(id, data)
   })
 
   ipcMain.on('ssh:resize', (_event, id: string, cols: number, rows: number) => {
+    if (!id || typeof id !== 'string') return
     sshManager.resize(id, cols, rows)
   })
 
   ipcMain.on('ssh:disconnect', (_event, id: string) => {
+    if (!id || typeof id !== 'string') return
     console.log(`[ipc] ssh:disconnect id=${id}`)
     sshManager.disconnect(id)
   })
 
   ipcMain.handle(
-    'ssh:fork',
-    async (_event, sourceId: string, newId: string): Promise<void> => {
-      console.log(`[ipc] ssh:fork source=${sourceId} new=${newId}`)
-      await sshManager.forkShell(sourceId, newId)
-    }
-  )
-
-  ipcMain.handle(
     'sftp:readdir',
-    async (_event, id: string, path: string): Promise<ReturnType<typeof sshManager.readdir>> => {
-      console.log(`[ipc] sftp:readdir id=${id} path=${path}`)
-      return await sshManager.readdir(id, path)
+    async (_event, id: string, p: string): Promise<ReturnType<typeof sshManager.readdir>> => {
+      validateRemotePath(p)
+      console.log(`[ipc] sftp:readdir id=${id} path=${p}`)
+      try {
+        return await sshManager.readdir(id, p)
+      } catch (err) {
+        throw sanitizeSshError(err)
+      }
     }
   )
 
-  ipcMain.handle(
-    'sftp:realpath',
-    async (_event, id: string, path: string): Promise<string> => {
-      console.log(`[ipc] sftp:realpath id=${id} path=${path}`)
-      return await sshManager.realpath(id, path)
+  ipcMain.handle('sftp:realpath', async (_event, id: string, p: string): Promise<string> => {
+    validateRemotePath(p)
+    console.log(`[ipc] sftp:realpath id=${id} path=${p}`)
+    try {
+      return await sshManager.realpath(id, p)
+    } catch (err) {
+      throw sanitizeSshError(err)
     }
-  )
+  })
 
-  ipcMain.handle(
-    'sftp:download',
-    async (event, id: string, remotePath: string): Promise<void> => {
-      const result = await dialog.showSaveDialog({
-        defaultPath: remotePath.split('/').pop() || 'download'
-      })
-      if (result.canceled || !result.filePath) return
-      const filename = remotePath.split('/').pop() || 'download'
-      const tid = transferId()
-      const trackSpeed = createSpeedTracker()
-      console.log(`[ipc] sftp:download ${remotePath} → ${result.filePath}`)
+  ipcMain.handle('sftp:download', async (_event, id: string, remotePath: string): Promise<void> => {
+    validateRemotePath(remotePath)
+    const result = await dialog.showSaveDialog({
+      defaultPath: remotePath.split('/').pop() || 'download'
+    })
+    if (result.canceled || !result.filePath) return
+    const filename = remotePath.split('/').pop() || 'download'
+    const tid = transferId()
+    const trackSpeed = createSpeedTracker()
+    console.log(`[ipc] sftp:download ${remotePath} → ${result.filePath}`)
+    try {
       await sshManager.download(id, remotePath, result.filePath, (transferred, total) => {
         const speed = trackSpeed(transferred)
         sendProgress({ id: tid, filename, type: 'download', transferred, total, speed })
       })
       sendComplete(tid)
+    } catch (err) {
+      sendError(tid, sanitizeSshError(err).message)
+      throw sanitizeSshError(err)
     }
-  )
+  })
 
-  ipcMain.handle(
-    'sftp:upload',
-    async (_event, id: string, remoteDir: string): Promise<void> => {
-      const result = await dialog.showOpenDialog({
-        properties: ['openFile']
-      })
-      if (result.canceled || !result.filePaths[0]) return
-      const localPath = result.filePaths[0]
-      const filename = localPath.replace(/\\/g, '/').split('/').pop() || 'file'
-      const remotePath = (remoteDir === '.' ? '' : remoteDir) + '/' + filename
-      const tid = transferId()
-      const trackSpeed = createSpeedTracker()
-      console.log(`[ipc] sftp:upload ${localPath} → ${remotePath}`)
+  ipcMain.handle('sftp:upload', async (_event, id: string, remoteDir: string): Promise<void> => {
+    validateRemotePath(remoteDir)
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile']
+    })
+    if (result.canceled || !result.filePaths[0]) return
+    const localPath = result.filePaths[0]
+    const filename = localPath.replace(/\\/g, '/').split('/').pop() || 'file'
+    const remotePath = (remoteDir === '.' ? '' : remoteDir) + '/' + filename
+    const tid = transferId()
+    const trackSpeed = createSpeedTracker()
+    console.log(`[ipc] sftp:upload ${localPath} → ${remotePath}`)
+    try {
       await sshManager.upload(id, localPath, remotePath, (transferred, total) => {
         const speed = trackSpeed(transferred)
         sendProgress({ id: tid, filename, type: 'upload', transferred, total, speed })
       })
       sendComplete(tid)
+    } catch (err) {
+      sendError(tid, sanitizeSshError(err).message)
+      throw sanitizeSshError(err)
     }
-  )
+  })
 
   ipcMain.handle(
     'sftp:uploadFile',
-    async (event, id: string, localPath: string, remotePath: string): Promise<void> => {
+    async (_event, id: string, localPath: string, remotePath: string): Promise<void> => {
+      validateRemotePath(remotePath)
+      if (!localPath || typeof localPath !== 'string') throw new Error('Invalid local path')
       const filename = remotePath.split('/').pop() || 'file'
       const tid = transferId()
       const trackSpeed = createSpeedTracker()
       console.log(`[ipc] sftp:uploadFile ${localPath} → ${remotePath}`)
-      await sshManager.upload(id, localPath, remotePath, (transferred, total) => {
-        const speed = trackSpeed(transferred)
-        sendProgress({ id: tid, filename, type: 'upload', transferred, total, speed })
-      })
-      sendComplete(tid)
+      try {
+        await sshManager.upload(id, localPath, remotePath, (transferred, total) => {
+          const speed = trackSpeed(transferred)
+          sendProgress({ id: tid, filename, type: 'upload', transferred, total, speed })
+        })
+        sendComplete(tid)
+      } catch (err) {
+        sendError(tid, sanitizeSshError(err).message)
+        throw sanitizeSshError(err)
+      }
     }
   )
 
   // send/on: 拖拽下载 — 下载到临时目录后启动原生文件拖拽
   ipcMain.on('sftp:dragDownload', async (event, id: string, remotePath: string) => {
+    validateRemotePath(remotePath)
     const filename = remotePath.split('/').pop() || 'download'
     const localPath = path.join(app.getPath('temp'), filename)
     console.log(`[ipc] sftp:dragDownload ${remotePath} → ${localPath}`)
-    await sshManager.download(id, remotePath, localPath)
+    try {
+      await sshManager.download(id, remotePath, localPath)
+    } catch (err) {
+      console.error(`[ipc] dragDownload failed:`, sanitizeSshError(err).message)
+      return
+    }
     event.sender.startDrag({
       file: localPath,
       icon: nativeImage.createEmpty()
@@ -192,26 +244,34 @@ export function registerSshIpc(): void {
     event.sender.send('transfer:dragready')
   })
 
-  ipcMain.handle(
-    'sftp:connect',
-    async (_event, id: string): Promise<void> => {
+  ipcMain.handle('sftp:connect', async (_event, id: string): Promise<void> => {
+    if (!id || typeof id !== 'string') throw new Error('Invalid id')
+    try {
       await sshManager.connectSftp(id)
+    } catch (err) {
+      throw sanitizeSshError(err)
     }
-  )
+  })
 
   ipcMain.handle(
     'sftp:downloadDirect',
-    async (event, id: string, remotePath: string): Promise<void> => {
+    async (_event, id: string, remotePath: string): Promise<void> => {
+      validateRemotePath(remotePath)
       const filename = remotePath.split('/').pop() || 'download'
       const localPath = path.join(app.getPath('downloads'), filename)
       const tid = transferId()
       const trackSpeed = createSpeedTracker()
       console.log(`[ipc] sftp:downloadDirect ${remotePath} → ${localPath}`)
-      await sshManager.download(id, remotePath, localPath, (transferred, total) => {
-        const speed = trackSpeed(transferred)
-        sendProgress({ id: tid, filename, type: 'download', transferred, total, speed })
-      })
-      sendComplete(tid)
+      try {
+        await sshManager.download(id, remotePath, localPath, (transferred, total) => {
+          const speed = trackSpeed(transferred)
+          sendProgress({ id: tid, filename, type: 'download', transferred, total, speed })
+        })
+        sendComplete(tid)
+      } catch (err) {
+        sendError(tid, sanitizeSshError(err).message)
+        throw sanitizeSshError(err)
+      }
     }
   )
 }

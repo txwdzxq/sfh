@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 连接/编辑对话框 — SSH 连接信息表单，支持新建和编辑两种模式
 
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { SshConnectionConfig, SshConnection } from '../../../main/ssh/types'
 
 const props = withDefaults(
@@ -22,10 +23,32 @@ const host = ref('')
 const port = ref(22)
 const username = ref('')
 const password = ref('')
-const privateKeyContent = ref('') // 密钥内容（而非路径）
+const privateKeyContent = ref('')
 const useKey = ref(false)
+const execCommand = ref('')
 const name = ref('')
 const show = ref(true)
+
+const { t } = useI18n()
+
+const portError = computed(() => {
+  const p = port.value
+  if (isNaN(p) || p < 1 || p > 65535 || !Number.isInteger(p)) return t('connectionDialog.portError')
+  return ''
+})
+
+const authError = computed(() => {
+  if (useKey.value) {
+    if (!privateKeyContent.value.trim()) return t('connectionDialog.authError.key')
+    return ''
+  }
+  if (!password.value) return t('connectionDialog.authError.password')
+  return ''
+})
+
+const canSubmit = computed(() => {
+  return host.value.trim() && username.value.trim() && !portError.value && !authError.value
+})
 
 // 编辑模式下预填充表单
 onMounted(() => {
@@ -42,16 +65,19 @@ onMounted(() => {
       useKey.value = true
       privateKeyContent.value = s.config.privateKey
     }
+    execCommand.value = s.config.execCommand || ''
   }
 })
 
 function submit(): void {
+  if (!canSubmit.value) return
   const config: SshConnectionConfig = {
-    host: host.value,
+    host: host.value.trim(),
     port: port.value,
-    username: username.value,
+    username: username.value.trim(),
     password: useKey.value ? undefined : password.value || undefined,
-    privateKey: useKey.value ? privateKeyContent.value || undefined : undefined
+    privateKey: useKey.value ? privateKeyContent.value || undefined : undefined,
+    execCommand: execCommand.value.trim() || undefined
   }
   const displayName = name.value || `${username.value}@${host.value}:${port.value}`
   console.log(`[dialog] submit: ${displayName}`)
@@ -69,9 +95,13 @@ function close(): void {
 
 /** 从文件选择器读取私钥内容 */
 async function selectKeyFile(): Promise<void> {
-  const result = await window.api.openPrivateKey()
-  if (result) {
-    privateKeyContent.value = result.content
+  try {
+    const result = await window.api.openPrivateKey()
+    if (result) {
+      privateKeyContent.value = result.content
+    }
+  } catch (e) {
+    console.error('[dialog] selectKeyFile failed:', e)
   }
 }
 </script>
@@ -81,14 +111,19 @@ async function selectKeyFile(): Promise<void> {
     <div v-if="show" class="dialog-overlay" @click.self="close">
       <div class="dialog">
         <div class="dialog-header">
-          <h2>{{ editSession ? $t('connectionDialog.titleEdit') : $t('connectionDialog.titleNew') }}</h2>
+          <h2>
+            {{ editSession ? $t('connectionDialog.titleEdit') : $t('connectionDialog.titleNew') }}
+          </h2>
           <button class="close-btn" @click="close">&times;</button>
         </div>
         <div class="dialog-body">
-    <div class="form-group">
-      <label>{{ $t('connectionDialog.label.name') }}</label>
-      <input v-model="name" :placeholder="`${username || 'user'}@${host || 'host'}:${port}`" />
-    </div>
+          <div class="form-group">
+            <label>{{ $t('connectionDialog.label.name') }}</label>
+            <input
+              v-model="name"
+              :placeholder="$t('connectionDialog.placeholder.displayName', { user: username || 'user', host: host || 'host', port })"
+            />
+          </div>
           <div class="form-row">
             <div class="form-group flex-grow">
               <label>{{ $t('connectionDialog.label.host') }}</label>
@@ -97,6 +132,7 @@ async function selectKeyFile(): Promise<void> {
             <div class="form-group port-group">
               <label>{{ $t('connectionDialog.label.port') }}</label>
               <input v-model.number="port" type="number" min="1" max="65535" />
+              <span v-if="portError" class="field-error">{{ portError }}</span>
             </div>
           </div>
           <div class="form-group">
@@ -112,28 +148,44 @@ async function selectKeyFile(): Promise<void> {
           <!-- 密码认证 -->
           <div v-if="!useKey" class="form-group">
             <label>{{ $t('connectionDialog.label.password') }}</label>
-            <input v-model="password" type="password" :placeholder="$t('connectionDialog.placeholder.password')" />
+            <input
+              v-model="password"
+              type="password"
+              :placeholder="$t('connectionDialog.placeholder.password')"
+            />
+            <span v-if="authError" class="field-error">{{ authError }}</span>
           </div>
           <!-- 密钥认证 -->
           <div v-else>
             <div class="form-group">
-              <label>{{ $t('connectionDialog.label.privateKey') }}</label>
-              <div class="key-actions">
-                <button class="btn-secondary key-browse" @click="selectKeyFile">{{ $t('connectionDialog.browseFile') }}</button>
+              <div class="key-header">
+                <label>{{ $t('connectionDialog.label.privateKey') }}</label>
+                <button class="btn-secondary key-browse" @click="selectKeyFile">
+                  {{ $t('connectionDialog.browseFile') }}
+                </button>
                 <span class="key-hint">{{ $t('connectionDialog.pasteKeyHint') }}</span>
               </div>
               <textarea
                 v-model="privateKeyContent"
                 class="key-textarea"
                 :placeholder="$t('connectionDialog.placeholder.privateKey')"
-                rows="6"
+                rows="3"
               ></textarea>
+              <span v-if="authError" class="field-error">{{ authError }}</span>
             </div>
+          </div>
+          <div class="form-group">
+            <label>{{ $t('connectionDialog.label.execCommand') }}</label>
+            <input
+              v-model="execCommand"
+              type="text"
+              :placeholder="$t('connectionDialog.placeholder.execCommand')"
+            />
           </div>
         </div>
         <div class="dialog-footer">
           <button class="btn-secondary" @click="close">{{ $t('connectionDialog.cancel') }}</button>
-          <button class="btn-primary" :disabled="!host || !username" @click="submit">
+          <button class="btn-primary" :disabled="!canSubmit" @click="submit">
             {{ editSession ? $t('connectionDialog.save') : $t('connectionDialog.connect') }}
           </button>
         </div>
@@ -154,6 +206,9 @@ async function selectKeyFile(): Promise<void> {
 }
 
 .dialog {
+  margin: auto;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: #1e1e2e;
   border: 1px solid #313244;
   border-radius: 8px;
@@ -227,6 +282,13 @@ input[type='number'] {
   box-sizing: border-box;
 }
 
+.field-error {
+  display: block;
+  font-size: 11px;
+  color: #f38ba8;
+  margin-top: 2px;
+}
+
 input[type='text']:focus,
 input[type='password']:focus,
 input[type='number']:focus {
@@ -245,11 +307,19 @@ input[type='number']:focus {
   width: auto;
 }
 
-.key-actions {
+.key-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.key-header .key-browse {
+  flex-shrink: 0;
+}
+
+.key-header label {
+  margin-bottom: 0;
 }
 
 .key-hint {

@@ -1,7 +1,7 @@
 # SSH FTP Hollow
 
-A Vue and TypeScript Electron application built entirely using OpenCode 
-Mainly used for SSH connections and small file transfers (<100M)
+A Vue and TypeScript Electron application built entirely using OpenCode  
+Mainly used for SSH connections and small file transfers (<100M)  
 
 ## Recommended IDE Setup
 
@@ -32,4 +32,21 @@ $ npm run build:mac
 
 # For Linux
 $ npm run build:linux
+
+## User Data
+
+Connections and settings are stored in `{userData}/config/`:
+
+| File | Description |
+|---|---|
+| `connections.json` | Saved SSH connections |
+| `settings.json` | App settings (theme, font, locale, etc.) |
+
+User data directory by platform:
+
+| Platform | Path |
+|---|---|
+| Windows | `%APPDATA%\sfh\config\` |
+| macOS | `~/Library/Application Support/sfh/config/` |
+| Linux | `~/.config/sfh/config/` |
 ```

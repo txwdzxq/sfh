@@ -9,19 +9,20 @@ export interface ShellSession {
 
 export class SSHShellManager {
   private sessions = new Map<string, ShellSession>()
-  
+
   onData: ((id: string, data: string) => void) | null = null
   onError: ((id: string, message: string) => void) | null = null
   onDisconnect: ((id: string) => void) | null = null
 
   async connect(id: string, config: SshConnectionConfig): Promise<void> {
-    if (this.sessions.has(id)) throw new Error('Connection exists')
+    // 如果已存在同名会话，先断开清理，避免竞争条件
+    if (this.sessions.has(id)) this.disconnect(id)
 
     const client = new Client()
     return new Promise((resolve, reject) => {
       let settled = false
       const timeout = config.readyTimeout ?? 10000
-      
+
       const timer = setTimeout(() => {
         if (settled) return
         settled = true
@@ -33,23 +34,33 @@ export class SSHShellManager {
         clearTimeout(timer)
         settled = true
         client.shell({ term: 'xterm-256color' }, (err, shell) => {
-          if (err) return reject(err)
+          if (err) {
+            client.end()
+            return reject(err)
+          }
           this.sessions.set(id, { client, shell, config })
           shell.on('data', (d) => this.onData?.(id, d.toString()))
           shell.stderr?.on('data', (d) => this.onData?.(id, d.toString()))
+          shell.stderr?.on('error', (e) => console.error(`[ssh] shell stderr error for ${id}:`, e.message))
           shell.on('close', () => {
             this.sessions.delete(id)
             this.onDisconnect?.(id)
           })
+          if (config.execCommand) {
+            shell.write(config.execCommand + '\n')
+          }
           resolve()
         })
       })
 
       client.on('error', (err) => {
-        if (settled) return
-        clearTimeout(timer)
-        settled = true
-        reject(err)
+        if (!settled) {
+          clearTimeout(timer)
+          settled = true
+          reject(err)
+        } else {
+          this.onError?.(id, err.message)
+        }
       })
 
       client.connect({
@@ -77,8 +88,16 @@ export class SSHShellManager {
   disconnect(id: string): void {
     const s = this.sessions.get(id)
     if (s) {
-      s.shell.close()
-      s.client.end()
+      try {
+        s.shell.close()
+      } catch (e) {
+        console.error(`[ssh] error closing shell for ${id}:`, e)
+      }
+      try {
+        s.client.end()
+      } catch (e) {
+        console.error(`[ssh] error ending client for ${id}:`, e)
+      }
       this.sessions.delete(id)
     }
   }

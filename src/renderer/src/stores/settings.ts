@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import type { SshConnectionConfig } from '../../../main/ssh/types'
 
-interface AppSettings {
+export interface AppSettings {
   reopenTabs: boolean
   autoFtp: boolean
   useSystemTitleBar: boolean
@@ -15,20 +15,37 @@ interface AppSettings {
 interface SavedTab {
   name: string
   config: SshConnectionConfig
-  forkFrom?: string
 }
 
 const state = reactive<{
   settings: AppSettings
   loaded: boolean
 }>({
-  settings: { reopenTabs: false, autoFtp: false, useSystemTitleBar: true, locale: 'zh-CN', fontSize: 14, zoom: 1, windowWidth: 900, windowHeight: 670 },
+  settings: {
+    reopenTabs: false,
+    autoFtp: false,
+    useSystemTitleBar: true,
+    locale: 'zh-CN',
+    fontSize: 14,
+    zoom: 1,
+    windowWidth: 900,
+    windowHeight: 670
+  },
   loaded: false
 })
 
 export let savedTabs: SavedTab[] = []
 
-const defaults: AppSettings = { reopenTabs: false, autoFtp: false, useSystemTitleBar: true, locale: 'zh-CN', fontSize: 14, zoom: 1, windowWidth: 900, windowHeight: 670 }
+const defaults: AppSettings = {
+  reopenTabs: false,
+  autoFtp: false,
+  useSystemTitleBar: true,
+  locale: 'zh-CN',
+  fontSize: 14,
+  zoom: 1,
+  windowWidth: 900,
+  windowHeight: 670
+}
 
 export function useSettingsStore() {
   async function load(): Promise<void> {
@@ -76,5 +93,17 @@ export function useSettingsStore() {
     await save()
   }
 
-  return { state, savedTabs, load, save, setReopenTabs, setAutoFtp, setUseSystemTitleBar, setLocale, setFontSize, setZoom, flush }
+  return {
+    state,
+    savedTabs,
+    load,
+    save,
+    setReopenTabs,
+    setAutoFtp,
+    setUseSystemTitleBar,
+    setLocale,
+    setFontSize,
+    setZoom,
+    flush
+  }
 }

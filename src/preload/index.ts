@@ -4,12 +4,31 @@ import { contextBridge, ipcRenderer, webUtils, webFrame } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { SshConnectionConfig } from '../main/ssh/types'
 
+/** 带超时的 IPC invoke 包装，超时后抛出 Error */
+function invokeWithTimeout<T>(channel: string, timeoutMs: number, ...args: unknown[]): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`IPC ${channel} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+    ipcRenderer
+      .invoke(channel, ...args)
+      .then((result) => {
+        clearTimeout(timer)
+        resolve(result as T)
+      })
+      .catch((err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+  })
+}
+
 // 所有与主进程通信的 API
 const sshApi = {
   // SSH 连接（invoke/handle，等待结果）
   connect: (id: string, config: SshConnectionConfig): Promise<void> => {
-    console.log(`[preload] connect id=${id} ${config.username}@${config.host}:${config.port}`)
-    return ipcRenderer.invoke('ssh:connect', id, config)
+    if (process.env.NODE_ENV !== 'production') console.log(`[preload] connect id=${id}`)
+    return invokeWithTimeout<void>('ssh:connect', 30000, id, config)
   },
   // 写入数据到 shell（send/on，单向）
   write: (id: string, data: string): void => ipcRenderer.send('ssh:write', id, data),
@@ -19,93 +38,127 @@ const sshApi = {
     console.log(`[preload] disconnect id=${id}`)
     ipcRenderer.send('ssh:disconnect', id)
   },
-  // 在已有 SSH 连接上创建子 shell（FTP）
-  forkShell: (sourceId: string, newId: string): Promise<void> =>
-    ipcRenderer.invoke('ssh:fork', sourceId, newId),
   // SFTP
-  readdir: (id: string, path: string): Promise<import('../main/ssh/manager').SftpEntry[]> =>
-    ipcRenderer.invoke('sftp:readdir', id, path),
+  readdir: (id: string, path: string): Promise<import('../main/ssh/types').SftpEntry[]> =>
+    invokeWithTimeout('sftp:readdir', 15000, id, path),
   realpath: (id: string, path: string): Promise<string> =>
-    ipcRenderer.invoke('sftp:realpath', id, path),
+    invokeWithTimeout('sftp:realpath', 15000, id, path),
   connectSftp: (id: string): Promise<void> =>
-    ipcRenderer.invoke('sftp:connect', id),
+    invokeWithTimeout<void>('sftp:connect', 15000, id),
   download: (id: string, remotePath: string): Promise<void> =>
-    ipcRenderer.invoke('sftp:download', id, remotePath),
+    invokeWithTimeout('sftp:download', 60000, id, remotePath),
   downloadDirect: (id: string, remotePath: string): Promise<void> =>
-    ipcRenderer.invoke('sftp:downloadDirect', id, remotePath),
+    invokeWithTimeout('sftp:downloadDirect', 60000, id, remotePath),
   upload: (id: string, remotePath: string): Promise<void> =>
-    ipcRenderer.invoke('sftp:upload', id, remotePath),
+    invokeWithTimeout('sftp:upload', 60000, id, remotePath),
   uploadFile: (id: string, localPath: string, remotePath: string): Promise<void> =>
-    ipcRenderer.invoke('sftp:uploadFile', id, localPath, remotePath),
+    invokeWithTimeout('sftp:uploadFile', 60000, id, localPath, remotePath),
   dragDownload: (id: string, remotePath: string): void =>
     ipcRenderer.send('sftp:dragDownload', id, remotePath),
-  // 监听来自主进程的数据事件
-  onData: (callback: (event: { id: string; data: string }) => void): void => {
+  // 监听来自主进程的数据事件（返回清理函数）
+  onData: (callback: (event: { id: string; data: string }) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { id: string; data: string }): void =>
       callback(data)
     ipcRenderer.on('ssh:data', handler)
+    return () => ipcRenderer.removeListener('ssh:data', handler)
   },
-  onError: (callback: (event: { id: string; message: string }) => void): void => {
+  onError: (callback: (event: { id: string; message: string }) => void): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
       data: { id: string; message: string }
     ): void => callback(data)
     ipcRenderer.on('ssh:error', handler)
+    return () => ipcRenderer.removeListener('ssh:error', handler)
   },
-  onDisconnect: (callback: (event: { id: string }) => void): void => {
+  onDisconnect: (callback: (event: { id: string }) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { id: string }): void =>
       callback(data)
     ipcRenderer.on('ssh:disconnect', handler)
-  },
-  // 清理所有传输事件监听
-  removeAllListeners: (): void => {
-    ipcRenderer.removeAllListeners('transfer:progress')
-    ipcRenderer.removeAllListeners('transfer:complete')
-    ipcRenderer.removeAllListeners('transfer:error')
-    ipcRenderer.removeAllListeners('transfer:dragready')
+    return () => ipcRenderer.removeListener('ssh:disconnect', handler)
   },
   // 持久化存储 API
   getConnections: (): Promise<import('../main/ssh/types').SshConnection[]> =>
     ipcRenderer.invoke('store:getConnections'),
   saveConnections: (connections: import('../main/ssh/types').SshConnection[]): Promise<void> =>
     ipcRenderer.invoke('store:saveConnections', connections),
-  getSettings: (): Promise<{ settings: { reopenTabs: boolean; autoFtp: boolean; useSystemTitleBar: boolean }; tabs: { name: string; config: import('../main/ssh/types').SshConnectionConfig; forkFrom?: string }[] }> =>
-    ipcRenderer.invoke('store:getSettings'),
-  saveSettings: (data: { settings: { reopenTabs: boolean; autoFtp: boolean; useSystemTitleBar: boolean }; tabs: { name: string; config: import('../main/ssh/types').SshConnectionConfig; forkFrom?: string }[] }): Promise<void> =>
-    ipcRenderer.invoke('store:saveSettings', data),
+  getSettings: (): Promise<{
+    settings: { reopenTabs: boolean; autoFtp: boolean; useSystemTitleBar: boolean }
+    tabs: { name: string; config: import('../main/ssh/types').SshConnectionConfig }[]
+  }> => ipcRenderer.invoke('store:getSettings'),
+  saveSettings: (data: {
+    settings: { reopenTabs: boolean; autoFtp: boolean; useSystemTitleBar: boolean }
+    tabs: { name: string; config: import('../main/ssh/types').SshConnectionConfig }[]
+  }): Promise<void> => ipcRenderer.invoke('store:saveSettings', data),
   setZoomFactor: (factor: number): void => webFrame.setZoomFactor(factor),
   // 文件选择器
   openPrivateKey: (): Promise<{ path: string; content: string } | null> =>
     ipcRenderer.invoke('dialog:openPrivateKey'),
   exportConnections: (data: string): Promise<boolean> =>
     ipcRenderer.invoke('dialog:exportConnections', data),
-  importConnections: (): Promise<unknown> =>
-    ipcRenderer.invoke('dialog:importConnections'),
+  importConnections: (): Promise<unknown> => ipcRenderer.invoke('dialog:importConnections'),
   // 获取应用版本
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   // 获取框架版本
   getVersions: (): Promise<{ electron: string; chrome: string; node: string }> =>
     ipcRenderer.invoke('app:getVersions'),
   // 获取拖拽文件的本地路径
-  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
-  // 传输队列事件监听
-  onTransferProgress: (callback: (data: {
-    id: string; filename: string; type: 'upload' | 'download';
-    transferred: number; total: number; speed: number
-  }) => void): void => {
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data as any)
+  getPathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return ''
+    }
+  },
+  // 传输队列事件监听（返回清理函数）
+  onTransferProgress: (
+    callback: (data: {
+      id: string
+      filename: string
+      type: 'upload' | 'download'
+      transferred: number
+      total: number
+      speed: number
+    }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: {
+        id: string
+        filename: string
+        type: 'upload' | 'download'
+        transferred: number
+        total: number
+        speed: number
+      }
+    ): void => callback(data)
     ipcRenderer.on('transfer:progress', handler)
+    return () => ipcRenderer.removeListener('transfer:progress', handler)
   },
-  onTransferComplete: (callback: (data: { id: string }) => void): void => {
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data as any)
+  onTransferComplete: (callback: (data: { id: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { id: string }): void =>
+      callback(data)
     ipcRenderer.on('transfer:complete', handler)
+    return () => ipcRenderer.removeListener('transfer:complete', handler)
   },
-  onTransferError: (callback: (data: { id: string; error: string }) => void): void => {
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data as any)
+  onTransferError: (callback: (data: { id: string; error: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { id: string; error: string }): void =>
+      callback(data)
     ipcRenderer.on('transfer:error', handler)
+    return () => ipcRenderer.removeListener('transfer:error', handler)
   },
-  onTransferDragReady: (callback: () => void): void => {
-    ipcRenderer.on('transfer:dragready', () => callback())
+  onTransferDragReady: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('transfer:dragready', handler)
+    return () => ipcRenderer.removeListener('transfer:dragready', handler)
+  },
+  removeAllListeners: (): void => {
+    ipcRenderer.removeAllListeners('ssh:data')
+    ipcRenderer.removeAllListeners('ssh:error')
+    ipcRenderer.removeAllListeners('ssh:disconnect')
+    ipcRenderer.removeAllListeners('transfer:progress')
+    ipcRenderer.removeAllListeners('transfer:complete')
+    ipcRenderer.removeAllListeners('transfer:error')
+    ipcRenderer.removeAllListeners('transfer:dragready')
   },
   // 窗口控制
   minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
@@ -114,20 +167,14 @@ const sshApi = {
   close: (): Promise<void> => ipcRenderer.invoke('window:close'),
   isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
   getPosition: (): Promise<[number, number]> => ipcRenderer.invoke('window:getPosition'),
-  setPosition: (x: number, y: number): Promise<void> => ipcRenderer.invoke('window:setPosition', x, y)
+  setPosition: (x: number, y: number): Promise<void> =>
+    ipcRenderer.invoke('window:setPosition', x, y)
 }
 
-const debug = {
-  log: (...args: unknown[]): void => console.log('[renderer]', ...args),
-  error: (...args: unknown[]): void => console.error('[renderer]', ...args)
-}
-
-// 根据 contextIsolation 状态决定如何暴露 API
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', sshApi)
-    contextBridge.exposeInMainWorld('debug', debug)
   } catch (error) {
     console.error(error)
   }
