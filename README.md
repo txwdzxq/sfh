@@ -1,6 +1,7 @@
-# sfh
+# SSH FTP Hollow
 
-An Electron application with Vue and TypeScript
+A Vue and TypeScript Electron application built entirely using OpenCode 
+Mainly used for SSH connections and small file transfers (<100M)
 
 ## Recommended IDE Setup
 

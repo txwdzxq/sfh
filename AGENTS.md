@@ -1,6 +1,6 @@
-# SFH Terminal — Project Structure
+# SSH FTP Hollow
 
-Electron + Vue 3 + TypeScript SSH 终端客户端。
+OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 
 ## Architecture
 
