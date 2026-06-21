@@ -247,29 +247,29 @@ onUnmounted(() => {
 .status-bar {
   padding: 6px 12px;
   font-size: 12px;
-  background: #1e1e2e;
-  color: #a6adc8;
-  border-bottom: 1px solid #313244;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .status-bar.error {
-  background: #2a1b1b;
-  color: #f38ba8;
+  background: color-mix(in srgb, var(--bg-base), var(--danger) 12%);
+  color: var(--danger);
 }
 
 .status-bar.disconnected {
-  background: #1e1e2e;
-  color: #6c7086;
+  background: var(--bg-surface);
+  color: var(--text-muted);
 }
 
 .spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid #313244;
-  border-top: 2px solid #89b4fa;
+  border: 2px solid var(--bg-overlay);
+  border-top: 2px solid var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -284,8 +284,8 @@ onUnmounted(() => {
   display: flex;
   flex-shrink: 0;
   min-height: 36px;
-  border-top: 1px solid #313244;
-  background: #1e1e2e;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
   align-items: flex-end;
 }
 
@@ -294,7 +294,7 @@ onUnmounted(() => {
   border: none;
   outline: none;
   background: transparent;
-  color: #cdd6f4;
+  color: var(--text-primary);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   font-size: 13px;
   padding: 8px 12px;
@@ -305,7 +305,7 @@ onUnmounted(() => {
 }
 
 .local-input::placeholder {
-  color: #585b70;
+  color: var(--bg-muted);
 }
 
 .send-btn {
@@ -313,7 +313,7 @@ onUnmounted(() => {
   height: 36px;
   border: none;
   background: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -324,8 +324,8 @@ onUnmounted(() => {
 }
 
 .send-btn:hover {
-  color: #89b4fa;
-  background: #313244;
+  color: var(--accent);
+  background: var(--bg-overlay);
 }
 
 .input-bar-wrapper {
@@ -340,8 +340,8 @@ onUnmounted(() => {
   right: 0;
   max-height: 200px;
   overflow-y: auto;
-  background: #181825;
-  border: 1px solid #313244;
+  background: var(--bg-mantle);
+  border: 1px solid var(--border);
   border-bottom: none;
 }
 
@@ -349,7 +349,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   height: 30px;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .quick-cmd {
@@ -357,7 +357,7 @@ onUnmounted(() => {
   padding: 0 12px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   font-size: 13px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -365,42 +365,42 @@ onUnmounted(() => {
 }
 
 .quick-cmd:hover {
-  color: #89b4fa;
+  color: var(--accent);
 }
 
 .quick-send-btn {
   width: 30px;
   border: none;
   background: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
   flex-shrink: 0;
 }
 
 .quick-send-btn:hover {
-  color: #a6e3a1;
+  color: var(--success);
 }
 
 .quick-del {
   width: 30px;
   border: none;
   background: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   flex-shrink: 0;
 }
 
 .quick-del:hover {
-  color: #f38ba8;
+  color: var(--danger);
 }
 
 .quick-add {
   height: 30px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .quick-add-input {
@@ -408,14 +408,14 @@ onUnmounted(() => {
   border: none;
   outline: none;
   background: transparent;
-  color: #a6adc8;
+  color: var(--text-secondary);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   font-size: 13px;
   padding: 0 12px;
 }
 
 .quick-add-input::placeholder {
-  color: #585b70;
+  color: var(--bg-muted);
 }
 
 .quick-btn {
@@ -423,7 +423,7 @@ onUnmounted(() => {
   height: 36px;
   border: none;
   background: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   flex-shrink: 0;
@@ -432,7 +432,7 @@ onUnmounted(() => {
 
 .quick-btn:hover,
 .quick-btn.active {
-  color: #89b4fa;
-  background: #313244;
+  color: var(--accent);
+  background: var(--bg-overlay);
 }
 </style>

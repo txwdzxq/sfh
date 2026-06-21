@@ -22,10 +22,13 @@ function validateRemotePath(p: string): void {
 /** 清理 ssh2 错误消息，防止泄漏敏感信息 */
 function sanitizeSshError(err: unknown): Error {
   const msg = err instanceof Error ? err.message : String(err)
-  if (msg.includes('connect ECONNREFUSED') || msg.includes('connect EHOSTUNREACH')) return new Error('Connection refused')
+  if (msg.includes('connect ECONNREFUSED') || msg.includes('connect EHOSTUNREACH'))
+    return new Error('Connection refused')
   if (msg.includes('Timed out')) return new Error('Connection timed out')
-  if (msg.includes('Authentication') && msg.includes('failed')) return new Error('Authentication failed')
-  if (msg.includes('ENOENT') || msg.includes('No such file')) return new Error('Remote path not found')
+  if (msg.includes('Authentication') && msg.includes('failed'))
+    return new Error('Authentication failed')
+  if (msg.includes('ENOENT') || msg.includes('No such file'))
+    return new Error('Remote path not found')
   if (msg.includes('Permission denied')) return new Error('Permission denied')
   return err instanceof Error ? err : new Error(msg)
 }

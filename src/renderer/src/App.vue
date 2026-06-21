@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref, computed, watch, nextTick, toRefs } from '
 import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from './stores/connection'
 import { useSettingsStore, savedTabs } from './stores/settings'
+import './assets/themes.css'
 import { useTabManager } from './composables/useTabManager'
 import ConnectionDialog from './components/ConnectionDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -262,8 +263,17 @@ function maximizeWindow(): void {
   window.api.maximize()
 }
 
-function closeWindow(): void {
+async function closeWindow(): Promise<void> {
+  await persistTabs()
   window.api.close()
+}
+
+function onBeforeUnload(): void {
+  persistTabs()
+}
+
+function applyTheme(theme: string): void {
+  document.documentElement.setAttribute('data-theme', theme)
 }
 
 onMounted(async () => {
@@ -271,6 +281,8 @@ onMounted(async () => {
   await loadSettings()
   // 应用保存的语言设置
   locale.value = state.settings.locale || 'zh-CN'
+  // 应用保存的主题
+  applyTheme(state.settings.theme || 'mocha')
   // 应用保存的缩放
   try {
     window.api.setZoomFactor(state.settings.zoom)
@@ -292,13 +304,23 @@ onMounted(async () => {
     }
   })
   window.addEventListener('resize', onResize)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
+  window.removeEventListener('beforeunload', onBeforeUnload)
   if (resizeTimer) clearTimeout(resizeTimer)
   disconnectCleanup.value?.()
 })
+
+// 切换主题
+watch(
+  () => state.settings.theme,
+  (val) => {
+    if (val) applyTheme(val)
+  }
+)
 
 // 切换标签时自动聚焦终端
 watch(activeTabId, (id) => {
@@ -306,13 +328,14 @@ watch(activeTabId, (id) => {
   nextTick(() => sessionRefs.value[id]?.focusAndFit())
 })
 
-function getTabColor(tab: Tab) {
+function getTabColor(tab: Tab): string {
+  const s = getComputedStyle(document.documentElement)
   const ssh = tab.connected
   const ftp = tab.ftpConnected
-  if (ssh && ftp) return '#cdd6f4'
-  if (ssh && !ftp) return '#f9e2af'
-  if (!ssh && ftp) return '#89b4fa'
-  return '#f38ba8'
+  if (ssh && ftp) return s.getPropertyValue('--text-primary').trim()
+  if (ssh && !ftp) return s.getPropertyValue('--warning').trim()
+  if (!ssh && ftp) return s.getPropertyValue('--accent').trim()
+  return s.getPropertyValue('--danger').trim()
 }
 
 function getTabTooltip(tab: Tab) {
@@ -361,7 +384,9 @@ const onResize = (): void => {
   windowSize.value = { w: window.innerWidth, h: window.innerHeight }
   showSize.value = true
   if (resizeTimer) clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(() => { showSize.value = false }, 500)
+  resizeTimer = setTimeout(() => {
+    showSize.value = false
+  }, 500)
 }
 
 /** 缩放预览（拖拽时浮动浮窗） */
@@ -380,7 +405,11 @@ function onZoomDrag(factor: number): void {
   previewZoom.value = factor
 }
 function onZoomApply(factor: number): void {
-  try { window.api.setZoomFactor(factor) } catch (e) { console.error('[app] setZoomFactor failed:', e) }
+  try {
+    window.api.setZoomFactor(factor)
+  } catch (e) {
+    console.error('[app] setZoomFactor failed:', e)
+  }
   previewZoom.value = null
 }
 </script>
@@ -466,7 +495,11 @@ function onZoomApply(factor: number): void {
           }"
           draggable="true"
           @click="setActiveTab(tab.id)"
-          @mouseup="(e) => { if ((e as MouseEvent).button === 1) handleCloseTab(tab.id) }"
+          @mouseup="
+            (e) => {
+              if ((e as MouseEvent).button === 1) handleCloseTab(tab.id)
+            }
+          "
           @contextmenu.prevent="onTabContextMenu($event, tab.id)"
           @dragstart="onDragStart(index)"
           @dragover.prevent="onDragOver(index)"
@@ -499,7 +532,13 @@ function onZoomApply(factor: number): void {
     >
       <div
         class="context-menu-item"
-        @click="reconnectTab(contextMenu.tabId); closeContextMenu()"
+        @click="
+          () => {
+            if (!contextMenu) return
+            reconnectTab(contextMenu.tabId)
+            closeContextMenu()
+          }
+        "
       >
         {{ $t('app.tabContextMenu.reload') }}
       </div>
@@ -630,8 +669,8 @@ body,
 #app {
   height: 100%;
   overflow: hidden;
-  background: #11111b;
-  color: #cdd6f4;
+  background: var(--bg-base);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 </style>
@@ -641,14 +680,14 @@ body,
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #11111b;
+  background: var(--bg-base);
 }
 
 .titlebar-tabs {
   display: flex;
   align-items: center;
-  background: #181825;
-  border-bottom: 1px solid #313244;
+  background: var(--bg-mantle);
+  border-bottom: 1px solid var(--border);
   min-height: 36px;
   flex-shrink: 0;
 }
@@ -672,15 +711,15 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #181825;
-  border-bottom: 1px solid #313244;
+  background: var(--bg-mantle);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .app-logo {
   font-size: 13px;
   font-weight: 600;
-  color: #89b4fa;
+  color: var(--accent);
 }
 
 .tab-list {
@@ -702,7 +741,7 @@ body,
   height: 100%;
   border: none;
   background: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 13px;
   cursor: pointer;
   display: flex;
@@ -714,13 +753,13 @@ body,
 }
 
 .titlebar-btn:hover {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 
 .titlebar-btn.titlebar-close:hover {
-  background: #f38ba8;
-  color: #1e1e2e;
+  background: var(--danger);
+  color: var(--bg-surface);
 }
 
 .app-body {
@@ -748,9 +787,9 @@ body,
   gap: 6px;
   padding: 6px 8px 6px 14px;
   font-size: 13px;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
-  border-right: 1px solid #313244;
+  border-right: 1px solid var(--border);
   white-space: nowrap;
   user-select: none;
   min-width: 0;
@@ -758,26 +797,26 @@ body,
 }
 
 .tab:hover {
-  background: #1e1e2e;
-  color: #cdd6f4;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .tab.active {
-  background: #1e1e2e;
-  color: #cdd6f4;
-  border-bottom: 2px solid #89b4fa;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--accent);
 }
 
 .tab-indicator {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #6c7086;
+  background: var(--text-muted);
   flex-shrink: 0;
 }
 
 .tab-indicator.connected {
-  background: #a6e3a1;
+  background: var(--success);
 }
 
 .tab-name {
@@ -789,7 +828,7 @@ body,
 .tab-close {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   padding: 0 2px;
@@ -798,12 +837,12 @@ body,
 }
 
 .tab-close:hover {
-  background: #313244;
-  color: #f38ba8;
+  background: var(--bg-overlay);
+  color: var(--danger);
 }
 
 .tab.drag-over-left {
-  border-left: 2px solid #89b4fa;
+  border-left: 2px solid var(--accent);
 }
 
 .tab.dragging {
@@ -813,8 +852,8 @@ body,
 .context-menu {
   position: fixed;
   z-index: 10000;
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 0;
   min-width: 120px;
@@ -824,38 +863,38 @@ body,
 .context-menu-item {
   padding: 6px 16px;
   font-size: 13px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   cursor: pointer;
   transition: background 0.1s;
   white-space: nowrap;
 }
 
 .context-menu-item:hover {
-  background: #313244;
-  color: #89b4fa;
+  background: var(--bg-overlay);
+  color: var(--accent);
 }
 
 .context-menu-separator {
   height: 1px;
-  background: #313244;
+  background: var(--border);
   margin: 4px 0;
 }
 
 .context-menu-close {
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .context-menu-close:hover {
-  color: #f38ba8;
-  background: #313244;
+  color: var(--danger);
+  background: var(--bg-overlay);
 }
 
 .subtab-bar {
   display: flex;
   align-items: center;
-  background: #181825;
-  border-bottom: 1px solid #313244;
+  background: var(--bg-mantle);
+  border-bottom: 1px solid var(--border);
   min-height: 28px;
   padding: 0 8px;
   gap: 2px;
@@ -865,7 +904,7 @@ body,
   padding: 3px 10px;
   border: none;
   background: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 12px;
   cursor: pointer;
   border-radius: 3px;
@@ -878,19 +917,19 @@ body,
 }
 
 .subtab-btn:hover {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 
 .subtab-btn.active {
-  background: #313244;
-  color: #89b4fa;
+  background: var(--bg-overlay);
+  color: var(--accent);
 }
 
 .tab-refresh {
   background: none;
   border: none;
-  color: #585b70;
+  color: var(--bg-muted);
   cursor: pointer;
   font-size: 11px;
   padding: 0 2px;
@@ -901,13 +940,13 @@ body,
 }
 
 .tab-refresh:hover {
-  color: #89b4fa;
+  color: var(--accent);
 }
 
 .tab-refresh.spinning {
   animation: spin 1s linear infinite;
   cursor: default;
-  color: #89b4fa;
+  color: var(--accent);
 }
 
 @keyframes spin {
@@ -929,11 +968,11 @@ body,
 }
 
 .status-dot.connected {
-  background: #a6e3a1;
+  background: var(--success);
 }
 
 .status-dot.disconnected {
-  background: #f38ba8;
+  background: var(--danger);
 }
 
 .content {
@@ -963,14 +1002,14 @@ body,
 }
 
 .welcome-content p {
-  color: #6c7086;
+  color: var(--text-muted);
   margin-bottom: 24px;
 }
 
 .btn-primary {
   padding: 10px 20px;
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: var(--accent);
+  color: var(--bg-surface);
   border: none;
   border-radius: 6px;
   font-size: 14px;
@@ -979,7 +1018,7 @@ body,
 }
 
 .btn-primary:hover {
-  background: #b4d0fb;
+  filter: brightness(1.1);
 }
 
 .resize-overlay {
@@ -988,11 +1027,11 @@ body,
   left: 50%;
   transform: translate(-50%, -50%);
   background: rgba(30, 30, 46, 0.85);
-  border: 1px solid #45475a;
+  border: 1px solid var(--bg-hover);
   border-radius: 6px;
   padding: 8px 16px;
   font-size: 14px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   pointer-events: none;
   z-index: 9999;
   white-space: nowrap;
@@ -1007,5 +1046,4 @@ body,
 .fade-leave-to {
   opacity: 0;
 }
-
 </style>

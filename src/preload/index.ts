@@ -43,8 +43,7 @@ const sshApi = {
     invokeWithTimeout('sftp:readdir', 15000, id, path),
   realpath: (id: string, path: string): Promise<string> =>
     invokeWithTimeout('sftp:realpath', 15000, id, path),
-  connectSftp: (id: string): Promise<void> =>
-    invokeWithTimeout<void>('sftp:connect', 15000, id),
+  connectSftp: (id: string): Promise<void> => invokeWithTimeout<void>('sftp:connect', 15000, id),
   download: (id: string, remotePath: string): Promise<void> =>
     invokeWithTimeout('sftp:download', 60000, id, remotePath),
   downloadDirect: (id: string, remotePath: string): Promise<void> =>
@@ -141,8 +140,10 @@ const sshApi = {
     return () => ipcRenderer.removeListener('transfer:complete', handler)
   },
   onTransferError: (callback: (data: { id: string; error: string }) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { id: string; error: string }): void =>
-      callback(data)
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { id: string; error: string }
+    ): void => callback(data)
     ipcRenderer.on('transfer:error', handler)
     return () => ipcRenderer.removeListener('transfer:error', handler)
   },
@@ -180,8 +181,8 @@ if (process.contextIsolated) {
   }
 } else {
   // 未启用 contextIsolation 时的降级方案
-  // @ts-ignore
+  // @ts-ignore - contextIsolation disabled fallback
   window.electron = electronAPI
-  // @ts-ignore
+  // @ts-ignore - contextIsolation disabled fallback
   window.api = sshApi
 }

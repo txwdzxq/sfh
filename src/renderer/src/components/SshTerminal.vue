@@ -10,6 +10,36 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 
+function getThemeColors() {
+  const s = getComputedStyle(document.documentElement)
+  function v(name: string) {
+    return s.getPropertyValue(name).trim()
+  }
+  return {
+    background: v('--bg-base'),
+    foreground: v('--text-primary'),
+    cursor: v('--text-primary'),
+    cursorAccent: v('--bg-base'),
+    selectionBackground: v('--bg-hover'),
+    black: v('--bg-hover'),
+    red: v('--danger'),
+    green: v('--success'),
+    yellow: v('--warning'),
+    blue: v('--accent'),
+    magenta: v('--mauve'),
+    cyan: v('--teal'),
+    white: v('--text-sub'),
+    brightBlack: v('--bg-muted'),
+    brightRed: v('--danger'),
+    brightGreen: v('--success'),
+    brightYellow: v('--warning'),
+    brightBlue: v('--accent'),
+    brightMagenta: v('--mauve'),
+    brightCyan: v('--teal'),
+    brightWhite: v('--text-secondary')
+  }
+}
+
 const props = defineProps<{
   tabId: string
 }>()
@@ -66,6 +96,16 @@ watch(
   }
 )
 
+// 监听主题变化
+watch(
+  () => settingsStore.state.settings.theme,
+  () => {
+    if (terminal) {
+      terminal.options.theme = getThemeColors()
+    }
+  }
+)
+
 /** 初始化 xterm.js 终端（Catppuccin 配色） */
 function initTerminal(): void {
   if (!terminalRef.value) return
@@ -76,28 +116,7 @@ function initTerminal(): void {
     fontSize: settingsStore.state.settings.fontSize,
     fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
     allowTransparency: true,
-    theme: {
-      background: '#1a1b26',
-      foreground: '#a9b1d6',
-      cursor: '#c0caf5',
-      selectionBackground: '#33467c',
-      black: '#32344a',
-      red: '#f7768e',
-      green: '#9ece6a',
-      yellow: '#e0af68',
-      blue: '#7aa2f7',
-      magenta: '#bb9af7',
-      cyan: '#7dcfff',
-      white: '#a9b1d6',
-      brightBlack: '#444b6a',
-      brightRed: '#f7768e',
-      brightGreen: '#9ece6a',
-      brightYellow: '#e0af68',
-      brightBlue: '#7aa2f7',
-      brightMagenta: '#bb9af7',
-      brightCyan: '#7dcfff',
-      brightWhite: '#c0caf5'
-    }
+    theme: getThemeColors()
   })
 
   fitAddon = new FitAddon()
@@ -178,7 +197,7 @@ onUnmounted(() => {
 })
 
 function focusAndFit(): void {
-  nextTick(() => {
+  requestAnimationFrame(() => {
     fitAddon?.fit()
     terminal?.focus()
   })
@@ -204,14 +223,14 @@ defineExpose({ fitTerminal, terminal, focusAndFit })
 .terminal-container {
   flex: 1;
   min-height: 0;
-  background: #1a1b26;
+  background: var(--bg-base);
   position: relative;
 }
 
 .context-menu {
   position: fixed;
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px 0;
   z-index: 1000;
@@ -221,11 +240,11 @@ defineExpose({ fitTerminal, terminal, focusAndFit })
 .menu-item {
   padding: 6px 16px;
   font-size: 13px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   cursor: pointer;
 }
 
 .menu-item:hover {
-  background: #313244;
+  background: var(--bg-overlay);
 }
 </style>

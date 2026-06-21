@@ -156,8 +156,8 @@ onUnmounted(() => {
   right: 0;
   width: 340px;
   height: 100%;
-  background: #1e1e2e;
-  border-left: 1px solid #313244;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   z-index: 20;
@@ -171,25 +171,25 @@ onUnmounted(() => {
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .queue-close {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 18px;
   padding: 0 4px;
 }
 
 .queue-close:hover {
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .queue-tabs {
   display: flex;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .queue-tab {
@@ -201,7 +201,7 @@ onUnmounted(() => {
   padding: 8px;
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 12px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -211,27 +211,27 @@ onUnmounted(() => {
 }
 
 .queue-tab:hover {
-  color: #cdd6f4;
-  background: #313244;
+  color: var(--text-primary);
+  background: var(--bg-overlay);
 }
 
 .queue-tab.active {
-  color: #89b4fa;
-  border-bottom-color: #89b4fa;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .tab-count {
   font-size: 10px;
-  background: #313244;
-  color: #6c7086;
+  background: var(--bg-overlay);
+  color: var(--text-muted);
   padding: 0 5px;
   border-radius: 8px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 }
 
 .queue-tab.active .tab-count {
-  background: #45475a;
-  color: #89b4fa;
+  background: var(--bg-hover);
+  color: var(--accent);
 }
 
 .queue-list {
@@ -248,12 +248,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
 .queue-item {
-  background: #181825;
+  background: var(--bg-mantle);
   border-radius: 6px;
   padding: 10px;
   display: flex;
@@ -266,7 +266,7 @@ onUnmounted(() => {
 }
 
 .queue-item.error {
-  border: 1px solid #f38ba8;
+  border: 1px solid var(--danger);
 }
 
 .queue-item-top {
@@ -276,7 +276,7 @@ onUnmounted(() => {
 }
 
 .queue-icon {
-  color: #6c7086;
+  color: var(--text-muted);
   flex-shrink: 0;
   display: flex;
 }
@@ -286,7 +286,7 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .queue-status {
@@ -295,51 +295,51 @@ onUnmounted(() => {
 }
 
 .queue-status.done {
-  color: #a6e3a1;
+  color: var(--success);
 }
 
 .queue-status.err {
-  color: #f38ba8;
+  color: var(--danger);
 }
 
 .queue-pct {
   font-size: 11px;
-  color: #89b4fa;
+  color: var(--accent);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 }
 
 .queue-bar-track {
   height: 4px;
-  background: #313244;
+  background: var(--bg-overlay);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .queue-bar-fill {
   height: 100%;
-  background: #89b4fa;
+  background: var(--accent);
   border-radius: 2px;
   transition: width 0.3s ease;
 }
 
 .queue-bar-fill.done {
-  background: #a6e3a1;
+  background: var(--success);
 }
 
 .queue-bar-fill.err {
-  background: #f38ba8;
+  background: var(--danger);
 }
 
 .queue-meta {
   display: flex;
   justify-content: space-between;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 11px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 }
 
 .err-msg {
-  color: #f38ba8;
+  color: var(--danger);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -348,15 +348,15 @@ onUnmounted(() => {
 
 .queue-footer {
   padding: 8px;
-  border-top: 1px solid #313244;
+  border-top: 1px solid var(--border);
   display: flex;
   justify-content: center;
 }
 
 .queue-clear-btn {
   background: none;
-  border: 1px solid #313244;
-  color: #6c7086;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px 12px;
   border-radius: 4px;
@@ -364,7 +364,7 @@ onUnmounted(() => {
 }
 
 .queue-clear-btn:hover {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 </style>

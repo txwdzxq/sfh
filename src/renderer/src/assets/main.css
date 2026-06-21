@@ -4,11 +4,16 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #11111b;
+  background: var(--bg-base);
   user-select: none;
 }
 
 #app {
   height: 100vh;
   width: 100vw;
+}
+
+/* 覆盖 xterm.js 默认 overflow-y: scroll 始终显示滚动条，改为 auto 按需显示 */
+.xterm .xterm-viewport {
+  overflow-y: auto !important;
 }

@@ -115,8 +115,8 @@ const emit = defineEmits<{
 <style scoped>
 .sidebar {
   width: 56px;
-  background: #181825;
-  border-right: 1px solid #313244;
+  background: var(--bg-mantle);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -144,23 +144,23 @@ const emit = defineEmits<{
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .sidebar-btn:hover {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 
 .sidebar-btn:active {
-  background: #45475a;
+  background: var(--bg-hover);
 }
 
 .sidebar-btn.active {
-  background: #313244;
-  color: #89b4fa;
+  background: var(--bg-overlay);
+  color: var(--accent);
 }
 
 .btn-label {

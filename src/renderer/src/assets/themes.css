@@ -1,0 +1,96 @@
+/* Catppuccin Theme Variables */
+/* Mocha (default) — dark, high contrast */
+[data-theme='mocha'] {
+  --bg-base: #11111b;
+  --bg-surface: #1e1e2e;
+  --bg-mantle: #181825;
+  --bg-overlay: #313244;
+  --bg-hover: #45475a;
+  --bg-muted: #585b70;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-sub: #bac2de;
+  --text-muted: #6c7086;
+  --accent: #89b4fa;
+  --danger: #f38ba8;
+  --success: #a6e3a1;
+  --warning: #f9e2af;
+  --mauve: #cba6f7;
+  --pink: #f5c2e7;
+  --teal: #94e2d5;
+  --peach: #fab387;
+  --border: #313244;
+  --border-hover: #45475a;
+}
+
+/* Macchiato — slightly lighter than Mocha */
+[data-theme='macchiato'] {
+  --bg-base: #181926;
+  --bg-surface: #24273a;
+  --bg-mantle: #1e2030;
+  --bg-overlay: #363a4f;
+  --bg-hover: #494d64;
+  --bg-muted: #5b6078;
+  --text-primary: #cad3f5;
+  --text-secondary: #a5adcb;
+  --text-sub: #b8c0e0;
+  --text-muted: #6e738d;
+  --accent: #8aadf4;
+  --danger: #ed8796;
+  --success: #a6da95;
+  --warning: #eed49f;
+  --mauve: #c6a0f6;
+  --pink: #f5bde6;
+  --teal: #8bd5ca;
+  --peach: #f5a97f;
+  --border: #363a4f;
+  --border-hover: #494d64;
+}
+
+/* Frappé — medium-light dark */
+[data-theme='frappe'] {
+  --bg-base: #232634;
+  --bg-surface: #303446;
+  --bg-mantle: #292c3c;
+  --bg-overlay: #414559;
+  --bg-hover: #51576d;
+  --bg-muted: #626880;
+  --text-primary: #c6d0f5;
+  --text-secondary: #a5adce;
+  --text-sub: #b5bfe2;
+  --text-muted: #737994;
+  --accent: #8caaee;
+  --danger: #e78284;
+  --success: #a6d189;
+  --warning: #e5c890;
+  --mauve: #ca9ee6;
+  --pink: #f4b8e4;
+  --teal: #81c8be;
+  --peach: #ef9f76;
+  --border: #414559;
+  --border-hover: #51576d;
+}
+
+/* Latte — light theme */
+[data-theme='latte'] {
+  --bg-base: #dce0e8;
+  --bg-surface: #eff1f5;
+  --bg-mantle: #e6e9ef;
+  --bg-overlay: #ccd0da;
+  --bg-hover: #bcc0cc;
+  --bg-muted: #acb0be;
+  --text-primary: #4c4f69;
+  --text-secondary: #6c6f85;
+  --text-sub: #5c5f77;
+  --text-muted: #9ca0b0;
+  --accent: #1e66f5;
+  --danger: #d20f39;
+  --success: #40a02b;
+  --warning: #df8e1d;
+  --mauve: #8839ef;
+  --pink: #dd7878;
+  --teal: #179299;
+  --peach: #fe640b;
+  --border: #ccd0da;
+  --border-hover: #bcc0cc;
+}

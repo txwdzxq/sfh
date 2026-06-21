@@ -14,6 +14,7 @@ export interface AppSettings {
   fontSize: number
   zoom: number
   locale: string
+  theme: string
   windowWidth: number
   windowHeight: number
 }
@@ -97,6 +98,7 @@ export function loadSettings(): SettingsData {
         fontSize: 14,
         zoom: 1,
         locale: 'zh-CN',
+        theme: 'mocha',
         windowWidth: 900,
         windowHeight: 670
       },
@@ -122,6 +124,7 @@ export function loadSettingsData(): AppSettings {
       fontSize: 14,
       zoom: 1,
       locale: 'zh-CN',
+      theme: 'mocha',
       windowWidth: 900,
       windowHeight: 670
     }

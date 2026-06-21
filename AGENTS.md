@@ -2,6 +2,8 @@
 
 OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 
+> **语言**: 所有与用户的交流及注释均使用中文。
+
 ## Architecture
 
 ```

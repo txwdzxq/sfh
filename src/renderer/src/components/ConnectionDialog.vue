@@ -121,7 +121,13 @@ async function selectKeyFile(): Promise<void> {
             <label>{{ $t('connectionDialog.label.name') }}</label>
             <input
               v-model="name"
-              :placeholder="$t('connectionDialog.placeholder.displayName', { user: username || 'user', host: host || 'host', port })"
+              :placeholder="
+                $t('connectionDialog.placeholder.displayName', {
+                  user: username || 'user',
+                  host: host || 'host',
+                  port
+                })
+              "
             />
           </div>
           <div class="form-row">
@@ -209,12 +215,12 @@ async function selectKeyFile(): Promise<void> {
   margin: auto;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   width: 480px;
   max-width: 90vw;
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .dialog-header {
@@ -222,7 +228,7 @@ async function selectKeyFile(): Promise<void> {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .dialog-header h2 {
@@ -234,7 +240,7 @@ async function selectKeyFile(): Promise<void> {
 .close-btn {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
   padding: 0;
@@ -252,7 +258,7 @@ async function selectKeyFile(): Promise<void> {
 .form-group label {
   display: block;
   font-size: 12px;
-  color: #a6adc8;
+  color: var(--text-secondary);
   margin-bottom: 4px;
 }
 
@@ -274,10 +280,10 @@ input[type='password'],
 input[type='number'] {
   width: 100%;
   padding: 8px 10px;
-  background: #181825;
-  border: 1px solid #313244;
+  background: var(--bg-mantle);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   font-size: 13px;
   box-sizing: border-box;
 }
@@ -285,7 +291,7 @@ input[type='number'] {
 .field-error {
   display: block;
   font-size: 11px;
-  color: #f38ba8;
+  color: var(--danger);
   margin-top: 2px;
 }
 
@@ -293,7 +299,7 @@ input[type='text']:focus,
 input[type='password']:focus,
 input[type='number']:focus {
   outline: none;
-  border-color: #89b4fa;
+  border-color: var(--accent);
 }
 
 .checkbox-label {
@@ -324,16 +330,16 @@ input[type='number']:focus {
 
 .key-hint {
   font-size: 12px;
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .key-textarea {
   width: 100%;
   padding: 8px 10px;
-  background: #181825;
-  border: 1px solid #313244;
+  background: var(--bg-mantle);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   font-size: 12px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   resize: vertical;
@@ -343,7 +349,7 @@ input[type='number']:focus {
 
 .key-textarea:focus {
   outline: none;
-  border-color: #89b4fa;
+  border-color: var(--accent);
 }
 
 .dialog-footer {
@@ -351,12 +357,13 @@ input[type='number']:focus {
   justify-content: flex-end;
   gap: 8px;
   padding: 16px 20px;
-  border-top: 1px solid #313244;
+  border-top: 1px solid var(--border);
 }
 
 .btn-primary,
 .btn-secondary {
   padding: 8px 16px;
+  min-width: 72px;
   border: none;
   border-radius: 4px;
   font-size: 13px;
@@ -364,9 +371,13 @@ input[type='number']:focus {
 }
 
 .btn-primary {
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: var(--accent);
+  color: var(--bg-surface);
   font-weight: 500;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
 }
 
 .btn-primary:disabled {
@@ -375,11 +386,11 @@ input[type='number']:focus {
 }
 
 .btn-secondary {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 
 .btn-secondary:hover {
-  background: #45475a;
+  background: var(--bg-hover);
 }
 </style>

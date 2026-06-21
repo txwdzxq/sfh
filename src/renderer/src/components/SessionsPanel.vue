@@ -4,7 +4,7 @@
 import { ref } from 'vue'
 import type { SshConnection } from '../../../main/ssh/types'
 
-const props = defineProps<{
+defineProps<{
   sessions: SshConnection[]
 }>()
 
@@ -88,7 +88,10 @@ function onDragEnd(): void {
         v-for="(session, index) in sessions"
         :key="session.id"
         class="session-item"
-        :class="{ 'drag-over-top': dragOverIndex === index && dragIndex !== null && dragIndex > index, 'drag-over-bottom': dragOverIndex === index && dragIndex !== null && dragIndex < index }"
+        :class="{
+          'drag-over-top': dragOverIndex === index && dragIndex !== null && dragIndex > index,
+          'drag-over-bottom': dragOverIndex === index && dragIndex !== null && dragIndex < index
+        }"
         draggable="true"
         @dragstart="onDragStart(index)"
         @dragover.prevent="onDragOver(index)"
@@ -167,8 +170,8 @@ function onDragEnd(): void {
   top: 0;
   bottom: 0;
   width: 240px;
-  background: #1e1e2e;
-  border-right: 1px solid #313244;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   z-index: 10;
@@ -180,14 +183,14 @@ function onDragEnd(): void {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
   min-height: 36px;
 }
 
 .panel-title {
   font-size: 12px;
   font-weight: 600;
-  color: #a6adc8;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -201,7 +204,7 @@ function onDragEnd(): void {
 .header-btn {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 13px;
   cursor: pointer;
   padding: 2px 4px;
@@ -211,13 +214,13 @@ function onDragEnd(): void {
 }
 
 .header-btn:hover {
-  color: #89b4fa;
+  color: var(--accent);
 }
 
 .close-btn {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 18px;
   cursor: pointer;
   padding: 0 2px;
@@ -226,7 +229,7 @@ function onDragEnd(): void {
 }
 
 .close-btn:hover {
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .panel-body {
@@ -242,7 +245,7 @@ function onDragEnd(): void {
   justify-content: center;
   padding: 40px 16px;
   text-align: center;
-  color: #6c7086;
+  color: var(--text-muted);
   gap: 8px;
 }
 
@@ -253,7 +256,7 @@ function onDragEnd(): void {
 
 .empty .hint {
   font-size: 11px;
-  color: #45475a;
+  color: var(--bg-hover);
   line-height: 1.4;
 }
 
@@ -268,20 +271,20 @@ function onDragEnd(): void {
 }
 
 .session-item:hover {
-  background: #313244;
+  background: var(--bg-overlay);
 }
 
 .session-item.drag-over-top {
-  border-top: 2px solid #89b4fa;
+  border-top: 2px solid var(--accent);
 }
 
 .session-item.drag-over-bottom {
-  border-bottom: 2px solid #89b4fa;
+  border-bottom: 2px solid var(--accent);
 }
 
 .session-icon {
   flex-shrink: 0;
-  color: #6c7086;
+  color: var(--text-muted);
 }
 
 .session-info {
@@ -291,7 +294,7 @@ function onDragEnd(): void {
 
 .session-name {
   font-size: 13px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -299,7 +302,7 @@ function onDragEnd(): void {
 
 .session-detail {
   font-size: 11px;
-  color: #6c7086;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -322,7 +325,7 @@ function onDragEnd(): void {
 .delete-btn {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -335,8 +338,8 @@ function onDragEnd(): void {
 }
 
 .edit-btn:hover {
-  color: #89b4fa;
-  background: #45475a;
+  color: var(--accent);
+  background: var(--bg-hover);
 }
 
 .delete-btn {
@@ -345,7 +348,7 @@ function onDragEnd(): void {
 }
 
 .delete-btn:hover {
-  color: #f38ba8;
-  background: #45475a;
+  color: var(--danger);
+  background: var(--bg-hover);
 }
 </style>

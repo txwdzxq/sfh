@@ -1,6 +1,8 @@
 import { reactive } from 'vue'
 import type { SshConnectionConfig } from '../../../main/ssh/types'
 
+export type Theme = 'mocha' | 'macchiato' | 'frappe' | 'latte'
+
 export interface AppSettings {
   reopenTabs: boolean
   autoFtp: boolean
@@ -8,6 +10,7 @@ export interface AppSettings {
   locale: string
   fontSize: number
   zoom: number
+  theme: Theme
   windowWidth: number
   windowHeight: number
 }
@@ -28,6 +31,7 @@ const state = reactive<{
     locale: 'zh-CN',
     fontSize: 14,
     zoom: 1,
+    theme: 'mocha',
     windowWidth: 900,
     windowHeight: 670
   },
@@ -43,6 +47,7 @@ const defaults: AppSettings = {
   locale: 'zh-CN',
   fontSize: 14,
   zoom: 1,
+  theme: 'mocha',
   windowWidth: 900,
   windowHeight: 670
 }
@@ -89,6 +94,10 @@ export function useSettingsStore() {
     state.settings.zoom = val
   }
 
+  function setTheme(val: Theme): void {
+    state.settings.theme = val
+  }
+
   async function flush(): Promise<void> {
     await save()
   }
@@ -104,6 +113,7 @@ export function useSettingsStore() {
     setLocale,
     setFontSize,
     setZoom,
+    setTheme,
     flush
   }
 }

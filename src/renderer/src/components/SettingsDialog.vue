@@ -4,6 +4,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
+import type { Theme } from '../stores/settings'
 
 const emit = defineEmits<{
   close: []
@@ -22,6 +23,7 @@ const {
   setLocale,
   setFontSize,
   setZoom,
+  setTheme,
   flush
 } = useSettingsStore()
 const { locale } = useI18n()
@@ -71,7 +73,11 @@ function onZoomChange(delta: number): void {
   zoom.value = Math.round(v)
   const factor = Math.round(v) / 100
   setZoom(factor)
-  try { window.api.setZoomFactor(factor) } catch (e) { console.error('[settings] setZoomFactor failed:', e) }
+  try {
+    window.api.setZoomFactor(factor)
+  } catch (e) {
+    console.error('[settings] setZoomFactor failed:', e)
+  }
 }
 
 function onZoomDrag(): void {
@@ -159,6 +165,19 @@ function onZoomRelease(): void {
               <span>{{ $t('settingsDialog.useSystemTitleBar') }}</span>
             </label>
             <div class="setting-row">
+              <label class="setting-label">{{ $t('settingsDialog.display.theme') }}</label>
+              <select
+                class="setting-select"
+                :value="state.settings.theme"
+                @change="setTheme(($event.target as HTMLSelectElement).value as Theme)"
+              >
+                <option value="mocha">{{ $t('settingsDialog.display.themeMocha') }}</option>
+                <option value="macchiato">{{ $t('settingsDialog.display.themeMacchiato') }}</option>
+                <option value="frappe">{{ $t('settingsDialog.display.themeFrappe') }}</option>
+                <option value="latte">{{ $t('settingsDialog.display.themeLatte') }}</option>
+              </select>
+            </div>
+            <div class="setting-row">
               <label class="setting-label">{{ $t('settingsDialog.display.zoom') }}</label>
               <input
                 v-model.number="zoom"
@@ -219,12 +238,12 @@ function onZoomRelease(): void {
   margin: auto;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   width: 480px;
   max-width: 90vw;
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .dialog-header {
@@ -232,7 +251,7 @@ function onZoomRelease(): void {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
 }
 
 .dialog-header h2 {
@@ -244,7 +263,7 @@ function onZoomRelease(): void {
 .close-btn {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
   padding: 0;
@@ -253,7 +272,7 @@ function onZoomRelease(): void {
 
 .tabs {
   display: flex;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--border);
   padding: 0 20px;
 }
 
@@ -262,7 +281,7 @@ function onZoomRelease(): void {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 13px;
   cursor: pointer;
   transition:
@@ -271,12 +290,12 @@ function onZoomRelease(): void {
 }
 
 .tab-btn:hover {
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .tab-btn.active {
-  color: #89b4fa;
-  border-bottom-color: #89b4fa;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .dialog-body {
@@ -291,7 +310,7 @@ function onZoomRelease(): void {
 }
 
 .placeholder {
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 13px;
   text-align: center;
   padding: 40px 0;
@@ -309,7 +328,7 @@ function onZoomRelease(): void {
 .checkbox-row input[type='checkbox'] {
   width: 16px;
   height: 16px;
-  accent-color: #89b4fa;
+  accent-color: var(--accent);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -323,15 +342,15 @@ function onZoomRelease(): void {
 
 .setting-label {
   font-size: 13px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   min-width: 60px;
 }
 
 .setting-select {
-  background: #181825;
-  border: 1px solid #313244;
+  background: var(--bg-mantle);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   font-size: 13px;
   padding: 4px 8px;
   cursor: pointer;
@@ -339,7 +358,7 @@ function onZoomRelease(): void {
 }
 
 .setting-select:focus {
-  border-color: #89b4fa;
+  border-color: var(--accent);
 }
 
 .setting-slider {
@@ -348,7 +367,7 @@ function onZoomRelease(): void {
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: #313244;
+  background: var(--bg-overlay);
   border-radius: 2px;
   outline: none;
   cursor: pointer;
@@ -360,14 +379,14 @@ function onZoomRelease(): void {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #89b4fa;
+  background: var(--accent);
   cursor: pointer;
   border: none;
 }
 
 .setting-value {
   font-size: 12px;
-  color: #a6adc8;
+  color: var(--text-secondary);
   min-width: 40px;
   text-align: right;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
@@ -378,7 +397,7 @@ function onZoomRelease(): void {
   justify-content: flex-end;
   gap: 8px;
   padding: 16px 20px;
-  border-top: 1px solid #313244;
+  border-top: 1px solid var(--border);
 }
 
 .btn-primary,
@@ -392,8 +411,8 @@ function onZoomRelease(): void {
 }
 
 .btn-primary {
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: var(--accent);
+  color: var(--bg-surface);
   font-weight: 500;
 }
 
@@ -403,25 +422,25 @@ function onZoomRelease(): void {
 }
 
 .btn-primary:hover {
-  background: #b4d0fb;
+  filter: brightness(1.1);
 }
 
 .btn-secondary {
-  background: #313244;
-  color: #cdd6f4;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
 }
 
 .btn-secondary:hover {
-  background: #45475a;
+  background: var(--bg-hover);
 }
 
 .step-btn {
   width: 24px;
   height: 24px;
-  border: 1px solid #45475a;
+  border: 1px solid var(--bg-hover);
   border-radius: 4px;
-  background: #181825;
-  color: #cdd6f4;
+  background: var(--bg-mantle);
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   display: flex;
@@ -433,6 +452,6 @@ function onZoomRelease(): void {
 }
 
 .step-btn:hover {
-  background: #313244;
+  background: var(--bg-overlay);
 }
 </style>

@@ -32,8 +32,9 @@ $ npm run build:mac
 
 # For Linux
 $ npm run build:linux
+```
 
-## User Data
+### User Data
 
 Connections and settings are stored in `{userData}/config/`:
 
@@ -49,4 +50,4 @@ User data directory by platform:
 | Windows | `%APPDATA%\sfh\config\` |
 | macOS | `~/Library/Application Support/sfh/config/` |
 | Linux | `~/.config/sfh/config/` |
-```
+

@@ -41,7 +41,9 @@ export class SSHShellManager {
           this.sessions.set(id, { client, shell, config })
           shell.on('data', (d) => this.onData?.(id, d.toString()))
           shell.stderr?.on('data', (d) => this.onData?.(id, d.toString()))
-          shell.stderr?.on('error', (e) => console.error(`[ssh] shell stderr error for ${id}:`, e.message))
+          shell.stderr?.on('error', (e) =>
+            console.error(`[ssh] shell stderr error for ${id}:`, e.message)
+          )
           shell.on('close', () => {
             this.sessions.delete(id)
             this.onDisconnect?.(id)
@@ -68,7 +70,9 @@ export class SSHShellManager {
         port: config.port,
         username: config.username,
         password: config.password,
-        privateKey: config.privateKey
+        privateKey: config.privateKey,
+        keepaliveInterval: 30000,
+        keepaliveCountMax: 3
       })
     })
   }
