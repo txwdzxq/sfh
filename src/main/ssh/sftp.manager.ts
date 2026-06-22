@@ -416,17 +416,21 @@ export class SFTPManager {
       }
       t.sftp.close(t.handle, () => {})
       this.controlledTransfers.delete(tid)
+      t.reject?.(new Error('transfer cancelled'))
     } else {
       t.readStream?.destroy()
       t.writeStream?.destroy()
       t.sftp.close(t.handle, () => {})
       this.controlledTransfers.delete(tid)
+      t.reject?.(new Error('transfer cancelled'))
     }
     return true
   }
 
-  cancelAllTransfers(): void {
+  cancelAllTransfers(): string[] {
+    const tids: string[] = []
     for (const [tid, t] of this.controlledTransfers) {
+      tids.push(tid)
       if (t.chunks) {
         t.cancelled = true
         if (t.localFd !== undefined) {
@@ -437,7 +441,28 @@ export class SFTPManager {
         t.writeStream?.destroy()
       }
       t.sftp.close(t.handle, () => {})
+      t.reject?.(new Error('transfer cancelled'))
       this.controlledTransfers.delete(tid)
+    }
+    return tids
+  }
+
+  cancelTransfersBySession(id: string): void {
+    const sftp = this.sftpSessions.get(id)
+    if (!sftp) return
+    for (const [tid, t] of this.controlledTransfers) {
+      if (t.sftp === sftp) {
+        t.cancelled = true
+        if (t.chunks && t.localFd !== undefined) {
+          try { fs.closeSync(t.localFd) } catch {}
+        } else {
+          t.readStream?.destroy()
+          t.writeStream?.destroy()
+        }
+        t.sftp.close(t.handle, () => {})
+        t.reject?.(new Error('transfer cancelled'))
+        this.controlledTransfers.delete(tid)
+      }
     }
   }
 }

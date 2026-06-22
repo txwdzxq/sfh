@@ -6,6 +6,7 @@ import type { SshConnection } from '../../../main/ssh/types'
 
 defineProps<{
   sessions: SshConnection[]
+  docked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -16,14 +17,14 @@ const emit = defineEmits<{
   export: []
   import: []
   reorder: [fromIndex: number, toIndex: number]
+  'update:pinned': [value: boolean]
 }>()
 
-const pinned = ref(false)
 const dragIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
 
 function closeOverlay(): void {
-  if (!pinned.value) emit('close')
+  emit('close')
 }
 
 function onDragStart(index: number): void {
@@ -54,24 +55,49 @@ function onDragEnd(): void {
 </script>
 
 <template>
-  <!-- 遮罩层：点击关闭面板 -->
-  <div class="panel-overlay" @click="closeOverlay"></div>
-  <div class="panel" :class="{ pinned }">
+  <!-- 遮罩层：仅浮动模式显示 -->
+  <div v-if="!docked" class="panel-overlay" @click="closeOverlay"></div>
+  <div class="panel" :class="{ docked }">
     <div class="panel-header">
       <div class="panel-header-left">
         <span class="panel-title">{{ $t('sessionsPanel.title') }}</span>
-        <button class="pin-btn" :class="{ active: pinned }" :title="$t('sessionsPanel.pin')" @click="pinned = !pinned">📌︎</button>
+        <button
+          class="pin-btn"
+          :class="{ active: docked }"
+          :title="$t('sessionsPanel.pin')"
+          @click="emit('update:pinned', !docked)"
+        >
+          📌︎
+        </button>
       </div>
       <div class="header-actions">
         <button class="header-btn" :title="$t('sessionsPanel.export')" @click="emit('export')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
         </button>
         <button class="header-btn" :title="$t('sessionsPanel.import')" @click="emit('import')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 13 12 18 17 13" />
             <line x1="12" y1="18" x2="12" y2="3" />
@@ -179,7 +205,7 @@ function onDragEnd(): void {
   z-index: 9;
 }
 
-/* 面板：浮动定位在 main-area 左上角，不占用布局空间 */
+/* 面板：始终 absolute 定位，容器 is-docked 控制占用空间 */
 .panel {
   position: absolute;
   left: 0;

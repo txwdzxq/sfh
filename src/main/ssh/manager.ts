@@ -34,6 +34,7 @@ export class SshManager {
   }
 
   disconnect(id: string): void {
+    this.sftpManager.cancelTransfersBySession(id)
     this.shellManager.disconnect(id)
   }
 
@@ -113,8 +114,8 @@ export class SshManager {
     return await this.sftpManager.uploadControlled(id, localPath, remotePath, transferId, onProgress)
   }
 
-  cancelAllTransfers(): void {
-    this.sftpManager.cancelAllTransfers()
+  cancelAllTransfers(): string[] {
+    return this.sftpManager.cancelAllTransfers()
   }
 }
 

@@ -13,6 +13,10 @@ const {
 } = useTransferStore()
 const transferStore = useTransferStore()
 
+defineProps<{
+  docked?: boolean
+}>()
+
 const activeTab = ref<'upload' | 'download'>(lastActiveTab.value)
 
 const filteredItems = computed(() => items.value.filter((i) => i.type === activeTab.value))
@@ -37,12 +41,11 @@ function progressPercent(item: TransferItem): number {
 
 const emit = defineEmits<{
   close: []
+  'update:pinned': [value: boolean]
 }>()
 
-const pinned = ref(false)
-
 function closeOverlay(): void {
-  if (!pinned.value) emit('close')
+  emit('close')
 }
 
 function openFolder(item: TransferItem): void {
@@ -55,7 +58,14 @@ function pauseTransfer(item: TransferItem): void {
 }
 
 function resumeTransfer(item: TransferItem): void {
-  window.api.resumeTransfer(item.id, item.tabId, item.remotePath, item.localPath, item.transferred, item.connectionKey)
+  window.api.resumeTransfer(
+    item.id,
+    item.tabId,
+    item.remotePath,
+    item.localPath,
+    item.transferred,
+    item.connectionKey
+  )
   transferStore.markActive(item.id)
 }
 
@@ -90,12 +100,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="queue-overlay" @click="closeOverlay"></div>
-  <div class="queue-panel" :class="{ pinned }">
+  <div v-if="!docked" class="queue-overlay" @click="closeOverlay"></div>
+  <div class="queue-panel" :class="{ docked }">
     <div class="queue-header">
       <div class="queue-header-left">
         <span>{{ $t('transferQueue.title') }}</span>
-        <button class="queue-pin-btn" :class="{ active: pinned }" :title="$t('transferQueue.pin')" @click.stop="pinned = !pinned">📌︎</button>
+        <button
+          class="queue-pin-btn"
+          :class="{ active: docked }"
+          :title="$t('transferQueue.pin')"
+          @click.stop="emit('update:pinned', !docked)"
+        >
+          📌︎
+        </button>
       </div>
       <button class="queue-close" @click.stop="emit('close')">&times;</button>
     </div>
@@ -153,7 +170,12 @@ onUnmounted(() => {
         v-for="item in filteredItems"
         :key="item.id"
         class="queue-item"
-        :class="{ completed: item.status === 'completed', error: item.status === 'error', paused: item.status === 'paused', cancelled: item.status === 'cancelled' }"
+        :class="{
+          completed: item.status === 'completed',
+          error: item.status === 'error',
+          paused: item.status === 'paused',
+          cancelled: item.status === 'cancelled'
+        }"
       >
         <div class="queue-item-top">
           <span class="queue-filename">{{ item.filename }}</span>
@@ -162,19 +184,25 @@ onUnmounted(() => {
             class="queue-action-btn"
             :title="$t('transferQueue.pause')"
             @click="pauseTransfer(item)"
-          >⏸</button>
+          >
+            ⏸
+          </button>
           <button
             v-if="item.status === 'paused'"
             class="queue-action-btn"
             :title="$t('transferQueue.resume')"
             @click="resumeTransfer(item)"
-          >▶</button>
+          >
+            ▶
+          </button>
           <button
             v-if="item.status === 'active' || item.status === 'paused'"
             class="queue-cancel-btn"
             :title="$t('transferQueue.cancel')"
             @click="cancelTransfer(item)"
-          >✕</button>
+          >
+            ✕
+          </button>
           <button
             v-if="item.status === 'completed' && item.type === 'download' && item.localPath"
             class="queue-folder-btn"
@@ -199,40 +227,60 @@ onUnmounted(() => {
             class="queue-retry-btn"
             :title="$t('transferQueue.retry')"
             @click="retryDownload(item)"
-          >↻</button>
+          >
+            ↻
+          </button>
           <button
             v-if="item.status === 'error'"
             class="queue-cancel-btn"
             :title="$t('transferQueue.remove')"
             @click="transferStore.removeItem(item.id)"
-          >✕</button>
+          >
+            ✕
+          </button>
           <button
             v-if="item.status === 'cancelled' && item.tabId && item.remotePath"
             class="queue-retry-btn"
             :title="$t('transferQueue.retry')"
             @click="retryDownload(item)"
-          >↻</button>
+          >
+            ↻
+          </button>
           <button
             v-if="item.status === 'cancelled'"
             class="queue-cancel-btn"
             :title="$t('transferQueue.remove')"
             @click="transferStore.removeItem(item.id)"
-          >✕</button>
+          >
+            ✕
+          </button>
         </div>
         <div class="queue-bar-track">
           <div
             class="queue-bar-fill"
-            :class="{ done: item.status === 'completed', err: item.status === 'error', paused: item.status === 'paused' }"
+            :class="{
+              done: item.status === 'completed',
+              err: item.status === 'error',
+              paused: item.status === 'paused'
+            }"
             :style="{ width: progressPercent(item) + '%' }"
           ></div>
         </div>
         <div class="queue-meta">
           <span>{{ formatSize(item.transferred) }} / {{ formatSize(item.total) }}</span>
           <span v-if="item.status === 'active'">{{ formatSpeed(item.speed) }}</span>
-          <span v-if="item.status === 'active' || item.status === 'paused'">{{ progressPercent(item) }}%</span>
-          <span v-if="item.status === 'paused'" class="queue-status paused">{{ $t('transferQueue.status.paused') }}</span>
-          <span v-if="item.status === 'cancelled'" class="queue-status cancelled">{{ $t('transferQueue.status.cancelled') }}</span>
-          <span v-else-if="item.status === 'error'" class="err-msg">{{ $t('transferQueue.status.error') }}</span>
+          <span v-if="item.status === 'active' || item.status === 'paused'"
+            >{{ progressPercent(item) }}%</span
+          >
+          <span v-if="item.status === 'paused'" class="queue-status paused">{{
+            $t('transferQueue.status.paused')
+          }}</span>
+          <span v-if="item.status === 'cancelled'" class="queue-status cancelled">{{
+            $t('transferQueue.status.cancelled')
+          }}</span>
+          <span v-else-if="item.status === 'error'" class="err-msg">{{
+            $t('transferQueue.status.error')
+          }}</span>
           <span v-else-if="item.status === 'completed'" class="queue-status done">{{
             $t('transferQueue.status.done')
           }}</span>
@@ -259,8 +307,8 @@ onUnmounted(() => {
   z-index: 999;
   top: 0;
   right: 0;
+  bottom: 0;
   width: 340px;
-  height: 100%;
   background: var(--bg-surface);
   border-left: 1px solid var(--border);
   display: flex;

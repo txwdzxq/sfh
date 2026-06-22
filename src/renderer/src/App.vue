@@ -47,7 +47,15 @@ const { sessionRefs, setSessionRef } = useTabManager()
 const { tabs, activeTabId } = connectionStore
 const settingsStore = useSettingsStore()
 const { useSystemTitleBar } = settingsStore
-const { addOrUpdate, markComplete, markError, hasActive, restoreQueue, markCancelled, lastActiveTab } = useTransferStore()
+const {
+  addOrUpdate,
+  markComplete,
+  markError,
+  hasActive,
+  restoreQueue,
+  markCancelled,
+  lastActiveTab
+} = useTransferStore()
 
 // 对话框
 const showDialog = defineModel<boolean>('showDialog', { default: false })
@@ -57,6 +65,22 @@ const showAbout = ref(false)
 const showQueue = ref(false)
 const disconnectCleanup = ref<(() => void) | null>(null)
 const transferCleanups: (() => void)[] = []
+
+const mainVerticalRef = ref<HTMLElement | null>(null)
+let resizeObserver: ResizeObserver | null = null
+
+// 面板固定状态（从设置读取）
+const sessionsPinned = ref(settingsStore.sessionsPinned.value)
+const queuePinned = ref(settingsStore.queuePinned.value)
+
+watch(sessionsPinned, (v) => {
+  settingsStore.setSessionsPinned(v)
+  settingsStore.flush()
+})
+watch(queuePinned, (v) => {
+  settingsStore.setQueuePinned(v)
+  settingsStore.flush()
+})
 
 interface FlyParticle {
   id: number
@@ -293,6 +317,15 @@ onMounted(async () => {
   )
   window.addEventListener('resize', onResize)
   window.addEventListener('beforeunload', onBeforeUnload)
+  resizeObserver = new ResizeObserver(() => {
+    const id = activeTabId.value
+    if (id) {
+      sessionRefs.value[id]?.focusAndFit()
+    }
+  })
+  if (mainVerticalRef.value) {
+    resizeObserver.observe(mainVerticalRef.value)
+  }
 })
 
 onUnmounted(() => {
@@ -301,6 +334,7 @@ onUnmounted(() => {
   resizeCleanup()
   disconnectCleanup.value?.()
   transferCleanups.forEach((fn) => fn())
+  resizeObserver?.disconnect()
 })
 
 watch(
@@ -552,9 +586,12 @@ async function reconnectTab(tabId: string): Promise<void> {
         @about="onAbout"
       />
       <div class="main-area">
+        <!-- 会话面板（始终 absolute 定位） -->
         <SessionsPanel
           v-if="showSessions"
+          :docked="sessionsPinned"
           :sessions="savedConnections"
+          @update:pinned="(v) => (sessionsPinned = v)"
           @select="handleSessionSelect"
           @edit="handleSessionEdit"
           @delete="handleSessionDelete"
@@ -563,103 +600,121 @@ async function reconnectTab(tabId: string): Promise<void> {
           @import="handleImport"
           @reorder="moveSavedConnection"
         />
-        <TransferQueue v-if="showQueue" @close="showQueue = false" />
-        <!-- 子标签栏 -->
-        <div v-if="activeTabId && tabs.find((t) => t.id === activeTabId)" class="subtab-bar">
-          <button
-            class="subtab-btn"
-            :class="{ active: tabs.find((t) => t.id === activeTabId)?.subTab === 'ssh' }"
-            @click="setSubTab(activeTabId, 'ssh')"
-          >
-            <span
-              class="status-dot"
-              :class="
-                tabs.find((t) => t.id === activeTabId)?.connected ? 'connected' : 'disconnected'
-              "
-            ></span>
-            {{ $t('app.subtab.ssh') }}
-          </button>
-          <button
-            class="subtab-btn"
-            :class="{ active: tabs.find((t) => t.id === activeTabId)?.subTab === 'ftp' }"
-            @click="setSubTab(activeTabId, 'ftp')"
-          >
-            <span
-              class="status-dot"
-              :class="
-                tabs.find((t) => t.id === activeTabId)?.ftpConnected ? 'connected' : 'disconnected'
-              "
-            ></span>
-            {{ $t('app.subtab.ftp') }}
-          </button>
-        </div>
-        <div v-if="activeTab && activeTab.loading && !activeTab.connected" class="status-bar">
-          <span class="spinner"></span>
-          {{
-            $t('sshSession.connecting', {
-              host: activeTab.config.host,
-              port: activeTab.config.port
-            })
-          }}
-        </div>
-        <div v-else-if="activeTab && activeTab.error" class="status-bar error">
-          {{ $t('sshSession.connectionFailed', { msg: activeTab.error }) }}
-          <button
-            class="status-reconnect"
-            :title="$t('app.subtab.reconnect')"
-            @click="reconnectTab(activeTab.id)"
-          >
-            ↻
-          </button>
-        </div>
+        <!-- 主内容区域（padding 由固定状态控制） -->
         <div
-          v-else-if="activeTab && !activeTab.connected && !activeTab.loading"
-          class="status-bar disconnected"
+          ref="mainVerticalRef"
+          class="main-vertical"
+          :style="{
+            paddingLeft: showSessions && sessionsPinned ? '240px' : '0',
+            paddingRight: showQueue && queuePinned ? '340px' : '0'
+          }"
         >
-          {{ $t('sshSession.connectionClosed') }}
-          <button
-            class="status-reconnect"
-            :title="$t('app.subtab.reconnect')"
-            @click="reconnectTab(activeTab.id)"
-          >
-            ↻
-          </button>
-        </div>
-        <div class="content">
-          <div v-if="tabs.length === 0" class="welcome">
-            <div class="welcome-content">
-              <h1>{{ $t('welcome.heading') }}</h1>
-              <p>{{ $t('welcome.description') }}</p>
-              <button class="btn-primary" @click="openDialog">
-                {{ $t('welcome.newConnection') }}
-              </button>
-            </div>
+          <!-- 子标签栏 -->
+          <div v-if="activeTabId && tabs.find((t) => t.id === activeTabId)" class="subtab-bar">
+            <button
+              class="subtab-btn"
+              :class="{ active: tabs.find((t) => t.id === activeTabId)?.subTab === 'ssh' }"
+              @click="setSubTab(activeTabId, 'ssh')"
+            >
+              <span
+                class="status-dot"
+                :class="
+                  tabs.find((t) => t.id === activeTabId)?.connected ? 'connected' : 'disconnected'
+                "
+              ></span>
+              {{ $t('app.subtab.ssh') }}
+            </button>
+            <button
+              class="subtab-btn"
+              :class="{ active: tabs.find((t) => t.id === activeTabId)?.subTab === 'ftp' }"
+              @click="setSubTab(activeTabId, 'ftp')"
+            >
+              <span
+                class="status-dot"
+                :class="
+                  tabs.find((t) => t.id === activeTabId)?.ftpConnected
+                    ? 'connected'
+                    : 'disconnected'
+                "
+              ></span>
+              {{ $t('app.subtab.ftp') }}
+            </button>
+          </div>
+          <div v-if="activeTab && activeTab.loading && !activeTab.connected" class="status-bar">
+            <span class="spinner"></span>
+            {{
+              $t('sshSession.connecting', {
+                host: activeTab.config.host,
+                port: activeTab.config.port
+              })
+            }}
+          </div>
+          <div v-else-if="activeTab && activeTab.error" class="status-bar error">
+            {{ $t('sshSession.connectionFailed', { msg: activeTab.error }) }}
+            <button
+              class="status-reconnect"
+              :title="$t('app.subtab.reconnect')"
+              @click="reconnectTab(activeTab.id)"
+            >
+              ↻
+            </button>
           </div>
           <div
-            v-for="tab in tabs"
-            v-show="tab.id === activeTabId"
-            :key="tab.id"
-            class="session-wrapper"
+            v-else-if="activeTab && !activeTab.connected && !activeTab.loading"
+            class="status-bar disconnected"
           >
-            <SshSession
-              v-show="tab.subTab === 'ssh'"
-              :ref="(el) => setSessionRef(tab.id, el)"
-              :tab-id="tab.id"
-              :config="tab.config"
-              @connected="onConnected(tab)"
-              @error="(msg) => onError(tab, msg)"
-            />
-            <FtpSession
-              v-if="tab.subTab === 'ftp'"
-              :tab-id="tab.id"
-              :initial-path="ftpCache[tab.id]?.path"
-              :initial-entries="ftpCache[tab.id]?.entries"
-              @loaded="(data) => (ftpCache[tab.id] = data)"
-              @download-start="(x, y, filename) => onDownloadStart(x, y, filename)"
-              @show-queue="onShowQueue"
-            />
+            {{ $t('sshSession.connectionClosed') }}
+            <button
+              class="status-reconnect"
+              :title="$t('app.subtab.reconnect')"
+              @click="reconnectTab(activeTab.id)"
+            >
+              ↻
+            </button>
+          </div>
+          <div class="content">
+            <div v-if="tabs.length === 0" class="welcome">
+              <div class="welcome-content">
+                <h1>{{ $t('welcome.heading') }}</h1>
+                <p>{{ $t('welcome.description') }}</p>
+                <button class="btn-primary" @click="openDialog">
+                  {{ $t('welcome.newConnection') }}
+                </button>
+              </div>
+            </div>
+            <div
+              v-for="tab in tabs"
+              v-show="tab.id === activeTabId"
+              :key="tab.id"
+              class="session-wrapper"
+            >
+              <SshSession
+                v-show="tab.subTab === 'ssh'"
+                :ref="(el) => setSessionRef(tab.id, el)"
+                :tab-id="tab.id"
+                :config="tab.config"
+                @connected="onConnected(tab)"
+                @error="(msg) => onError(tab, msg)"
+              />
+              <FtpSession
+                v-if="tab.subTab === 'ftp'"
+                :tab-id="tab.id"
+                :initial-path="ftpCache[tab.id]?.path"
+                :initial-entries="ftpCache[tab.id]?.entries"
+                @loaded="(data) => (ftpCache[tab.id] = data)"
+                @download-start="(x, y, filename) => onDownloadStart(x, y, filename)"
+                @show-queue="onShowQueue"
+              />
+            </div>
           </div>
         </div>
+        <!-- 传输队列（始终 absolute 定位） -->
+        <TransferQueue
+          v-if="showQueue"
+          :docked="queuePinned"
+          @update:pinned="(v) => (queuePinned = v)"
+          @close="showQueue = false"
+        />
       </div>
     </div>
     <ConnectionDialog
@@ -808,6 +863,14 @@ body,
 }
 
 .main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;
+}
+
+.main-vertical {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1010,6 +1073,7 @@ body,
 .content {
   flex: 1;
   overflow: hidden;
+  min-width: 0;
 }
 
 .status-bar {

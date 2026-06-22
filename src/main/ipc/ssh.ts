@@ -237,6 +237,8 @@ export function registerSshIpc(): void {
         })
         sendComplete(tid)
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg === 'transfer cancelled') return
         sendError(tid, sanitizeSshError(err).message)
         throw sanitizeSshError(err)
       }
@@ -263,6 +265,8 @@ export function registerSshIpc(): void {
       })
       sendComplete(tid)
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg === 'transfer cancelled') return
       sendError(tid, sanitizeSshError(err).message)
       throw sanitizeSshError(err)
     }
@@ -285,6 +289,8 @@ export function registerSshIpc(): void {
         })
         sendComplete(tid)
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg === 'transfer cancelled') return
         sendError(tid, sanitizeSshError(err).message)
         throw sanitizeSshError(err)
       }
@@ -413,6 +419,8 @@ export function registerSshIpc(): void {
           win.webContents.send(IPC.TRANSFER_COMPLETE, { id: tid, localPath })
         })
       }).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg === 'transfer cancelled') return
         BrowserWindow.getAllWindows().forEach((win) => {
           win.webContents.send(IPC.TRANSFER_ERROR, { id: tid, error: sanitizeSshError(err).message })
         })
@@ -431,6 +439,11 @@ export function registerSshIpc(): void {
 
   ipcMain.on(IPC.TRANSFER_CANCEL_ALL, () => {
     console.log(`[ipc] transfer:cancelAll`)
-    sshManager.cancelAllTransfers()
+    const tids = sshManager.cancelAllTransfers()
+    tids.forEach((tid) => {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        win.webContents.send(IPC.TRANSFER_CANCELLED, { id: tid })
+      })
+    })
   })
 }

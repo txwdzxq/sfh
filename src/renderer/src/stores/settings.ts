@@ -1,5 +1,11 @@
 import { reactive, toRefs } from 'vue'
-import type { AppSettings, SavedTab, Theme, TransferItemData, FtpBookmark } from '../../../shared/types'
+import type {
+  AppSettings,
+  SavedTab,
+  Theme,
+  TransferItemData,
+  FtpBookmark
+} from '../../../shared/types'
 export type { Theme }
 
 const defaults: AppSettings = {
@@ -14,7 +20,9 @@ const defaults: AppSettings = {
   windowHeight: 670,
   defaultDownloadPath: '',
   askDownloadLocation: true,
-  showQueueOnDownload: false
+  showQueueOnDownload: false,
+  sessionsPinned: false,
+  queuePinned: false
 }
 
 const state = reactive({
@@ -69,7 +77,9 @@ export function useSettingsStore() {
       windowHeight: state.windowHeight,
       defaultDownloadPath: state.defaultDownloadPath,
       askDownloadLocation: state.askDownloadLocation,
-      showQueueOnDownload: state.showQueueOnDownload
+      showQueueOnDownload: state.showQueueOnDownload,
+      sessionsPinned: state.sessionsPinned,
+      queuePinned: state.queuePinned
     }
   }
 
@@ -113,6 +123,14 @@ export function useSettingsStore() {
     state.showQueueOnDownload = val
   }
 
+  function setSessionsPinned(val: boolean): void {
+    state.sessionsPinned = val
+  }
+
+  function setQueuePinned(val: boolean): void {
+    state.queuePinned = val
+  }
+
   async function flush(): Promise<void> {
     await save()
   }
@@ -131,6 +149,8 @@ export function useSettingsStore() {
     setDefaultDownloadPath,
     setAskDownloadLocation,
     setShowQueueOnDownload,
+    setSessionsPinned,
+    setQueuePinned,
     flush
   }
 }

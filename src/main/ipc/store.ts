@@ -82,7 +82,9 @@ export function loadSettings(): SettingsData {
         windowHeight: 670,
         defaultDownloadPath: '',
         askDownloadLocation: true,
-        showQueueOnDownload: false
+        showQueueOnDownload: false,
+        sessionsPinned: false,
+        queuePinned: false
       },
       tabs: []
     }
@@ -111,7 +113,9 @@ export function loadSettingsData(): AppSettings {
       windowHeight: 670,
       defaultDownloadPath: '',
       askDownloadLocation: true,
-      showQueueOnDownload: false
+      showQueueOnDownload: false,
+      sessionsPinned: false,
+      queuePinned: false
     }
   }
 }

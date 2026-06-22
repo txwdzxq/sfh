@@ -15,6 +15,8 @@ export interface AppSettings {
   defaultDownloadPath: string
   askDownloadLocation: boolean
   showQueueOnDownload: boolean
+  sessionsPinned: boolean
+  queuePinned: boolean
 }
 
 export interface SavedTab {
