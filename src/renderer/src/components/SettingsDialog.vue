@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// 设置对话框 — 通用 / 显示 / 终端 三个标签页
+// 设置对话框 — 通用 / 显示 / 终端 / 传输 四个标签页
 
-import { ref, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
-import type { Theme } from '../stores/settings'
+import type { Theme } from '../../../shared/types'
 
 const emit = defineEmits<{
   close: []
@@ -12,11 +12,17 @@ const emit = defineEmits<{
   zoomApply: [factor: number]
 }>()
 
-type Tab = 'general' | 'display' | 'terminal'
+type Tab = 'general' | 'display' | 'terminal' | 'transfer'
 const activeTab = ref<Tab>('general')
 const show = ref(true)
 const {
-  state,
+  locale: appLocale,
+  reopenTabs,
+  autoFtp,
+  useSystemTitleBar,
+  theme,
+  fontSize: storeFontSize,
+  zoom: storeZoom,
   setReopenTabs,
   setAutoFtp,
   setUseSystemTitleBar,
@@ -24,24 +30,44 @@ const {
   setFontSize,
   setZoom,
   setTheme,
+  defaultDownloadPath,
+  setDefaultDownloadPath,
+  askDownloadLocation,
+  setAskDownloadLocation,
+  showQueueOnDownload,
+  setShowQueueOnDownload,
   flush
 } = useSettingsStore()
 const { locale } = useI18n()
 
 // 使用本地 ref 确保滑块与显示值实时响应
-const fontSize = ref(state.settings.fontSize)
-const zoom = ref(Math.round(state.settings.zoom * 100))
+const fontSize = ref(storeFontSize.value)
+const zoom = ref(Math.round(storeZoom.value * 100))
 const sliderDragging = ref(false)
+const systemDownloadsPath = ref('')
+const editingDefaultPath = ref(false)
+
+const isDefaultDownloadPath = computed(
+  () => !defaultDownloadPath.value || defaultDownloadPath.value === systemDownloadsPath.value
+)
+
+onMounted(async () => {
+  try {
+    systemDownloadsPath.value = await window.api.getDefaultDownloadsPath()
+  } catch {
+    systemDownloadsPath.value = ''
+  }
+})
 
 // 监听 store 变化，同步本地 ref（解决会话存在时设置不同步的问题）
 watch(
-  () => state.settings.fontSize,
+  () => storeFontSize.value,
   (val) => {
     fontSize.value = val
   }
 )
 watch(
-  () => state.settings.zoom,
+  () => storeZoom.value,
   (val) => {
     zoom.value = Math.round(val * 100)
   }
@@ -90,6 +116,19 @@ function onZoomRelease(): void {
   setZoom(factor)
   emit('zoomApply', factor)
 }
+
+function resetToDefault(): void {
+  setDefaultDownloadPath('')
+  editingDefaultPath.value = false
+}
+
+async function browseDownloadPath(): Promise<void> {
+  const dir = await window.api.openFolderDialog()
+  if (dir) {
+    setDefaultDownloadPath(dir)
+    editingDefaultPath.value = false
+  }
+}
 </script>
 
 <template>
@@ -122,6 +161,13 @@ function onZoomRelease(): void {
           >
             {{ $t('settingsDialog.tab.terminal') }}
           </button>
+          <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'transfer' }"
+            @click="activeTab = 'transfer'"
+          >
+            {{ $t('settingsDialog.tab.transfer') }}
+          </button>
         </div>
         <div class="dialog-body">
           <!-- 通用 -->
@@ -130,7 +176,7 @@ function onZoomRelease(): void {
               <label class="setting-label">{{ $t('settingsDialog.general.language') }}</label>
               <select
                 class="setting-select"
-                :value="state.settings.locale"
+                :value="appLocale"
                 @change="onLocaleChange(($event.target as HTMLSelectElement).value)"
               >
                 <option value="zh-CN">{{ $t('settingsDialog.general.languageZh') }}</option>
@@ -140,7 +186,7 @@ function onZoomRelease(): void {
             <label class="checkbox-row">
               <input
                 type="checkbox"
-                :checked="state.settings.reopenTabs"
+                :checked="reopenTabs"
                 @change="setReopenTabs(($event.target as HTMLInputElement).checked)"
               />
               <span>{{ $t('settingsDialog.reopenTabs') }}</span>
@@ -148,7 +194,7 @@ function onZoomRelease(): void {
             <label class="checkbox-row">
               <input
                 type="checkbox"
-                :checked="state.settings.autoFtp"
+                :checked="autoFtp"
                 @change="setAutoFtp(($event.target as HTMLInputElement).checked)"
               />
               <span>{{ $t('settingsDialog.autoFtp') }}</span>
@@ -159,7 +205,7 @@ function onZoomRelease(): void {
             <label class="checkbox-row">
               <input
                 type="checkbox"
-                :checked="state.settings.useSystemTitleBar"
+                :checked="useSystemTitleBar"
                 @change="setUseSystemTitleBar(($event.target as HTMLInputElement).checked)"
               />
               <span>{{ $t('settingsDialog.useSystemTitleBar') }}</span>
@@ -168,7 +214,7 @@ function onZoomRelease(): void {
               <label class="setting-label">{{ $t('settingsDialog.display.theme') }}</label>
               <select
                 class="setting-select"
-                :value="state.settings.theme"
+                :value="theme"
                 @change="setTheme(($event.target as HTMLSelectElement).value as Theme)"
               >
                 <option value="mocha">{{ $t('settingsDialog.display.themeMocha') }}</option>
@@ -212,6 +258,61 @@ function onZoomRelease(): void {
               <button class="step-btn" @click="onFontSizeChange(-1)">−</button>
               <button class="step-btn" @click="onFontSizeChange(1)">+</button>
             </div>
+          </div>
+          <!-- 传输 -->
+          <div v-if="activeTab === 'transfer'" class="tab-content">
+            <div class="setting-row">
+              <label class="setting-label">{{
+                $t('settingsDialog.transfer.defaultDownloadPath')
+              }}</label>
+              <div class="path-input-group">
+                <template v-if="isDefaultDownloadPath && !editingDefaultPath">
+                  <span class="path-display" @click="editingDefaultPath = true">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    {{ $t('settingsDialog.transfer.defaultPathLabel') }}
+                  </span>
+                </template>
+                <input
+                  v-else
+                  class="setting-input"
+                  :value="defaultDownloadPath"
+                  :placeholder="systemDownloadsPath"
+                  @input="setDefaultDownloadPath(($event.target as HTMLInputElement).value)"
+                  @blur="editingDefaultPath = false"
+                />
+                <button class="browse-btn" @click="browseDownloadPath">⋯</button>
+              </div>
+            </div>
+            <button v-if="!isDefaultDownloadPath" class="reset-btn" @click="resetToDefault">
+              {{ $t('settingsDialog.transfer.resetDefault') }}
+            </button>
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                :checked="askDownloadLocation"
+                @change="setAskDownloadLocation(($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ $t('settingsDialog.transfer.askDownloadLocation') }}</span>
+            </label>
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                :checked="showQueueOnDownload"
+                @change="setShowQueueOnDownload(($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ $t('settingsDialog.transfer.showQueueOnDownload') }}</span>
+            </label>
           </div>
         </div>
         <div class="dialog-footer">
@@ -453,5 +554,86 @@ function onZoomRelease(): void {
 
 .step-btn:hover {
   background: var(--bg-overlay);
+}
+
+.path-input-group {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+}
+
+.setting-input {
+  flex: 1;
+  background: var(--bg-mantle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 4px 8px;
+  outline: none;
+  min-width: 0;
+}
+
+.setting-input:focus {
+  border-color: var(--accent);
+}
+
+.browse-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-mantle);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.browse-btn:hover {
+  background: var(--bg-overlay);
+  color: var(--accent);
+}
+
+.path-display {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.path-display:hover {
+  background: var(--bg-overlay);
+}
+
+.path-display svg {
+  flex-shrink: 0;
+}
+
+.reset-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.reset-btn:hover {
+  background: var(--bg-overlay);
+  color: var(--danger);
 }
 </style>

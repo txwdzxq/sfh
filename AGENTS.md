@@ -13,9 +13,11 @@ OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 │    index.ts       入口：创建窗口、注册 IPC        │
 │    ssh/                                         │
 │      types.ts     类型定义 (SshConnectionConfig) │
-│      manager.ts   SSH 引擎 (ssh2 连接/读写)      │
+│      manager.ts   SSH 引擎 Façade                │
+│      shell.manager.ts  Shell 连接管理            │
+│      sftp.manager.ts   SFTP 通道管理              │
 │    ipc/                                          │
-│      ssh.ts       SSH IPC 通道                   │
+│      ssh.ts       SSH/SFTP IPC 通道              │
 │      store.ts     持久化存储 IPC                 │
 │      dialog.ts    文件对话框 IPC                 │
 ├─────────────────────────────────────────────────┤
@@ -29,20 +31,43 @@ OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 │    index.html       HTML 入口                    │
 │    src/                                          │
 │      main.ts        Vue 应用挂载                 │
+│      i18n.ts        国际化                        │
 │      env.d.ts       全局类型声明                 │
 │      App.vue        根组件 (布局/事件分发)        │
 │      stores/                                     │
-│        connection.ts  全局状态管理 (tabs/session) │
+│        connection.ts  tab/连接/会话面板            │
+│        transfer.ts   传输队列状态                  │
+│        settings.ts   用户设置                      │
 │      components/                                  │
 │        Sidebar.vue          左侧垂直工具栏        │
 │        SessionsPanel.vue     浮动会话列表面板     │
 │        ConnectionDialog.vue  连接/编辑对话框      │
 │        SshSession.vue        SSH 会话生命周期     │
 │        SshTerminal.vue       xterm.js 终端        │
-│        SettingsDialog.vue     设置对话框 (通用/显示/终端)
-│        AboutDialog.vue        关于对话框 (版本信息)
-│        FtpSession.vue         FTP 文件浏览器
-│        TransferQueue.vue      传输队列面板
+│        FtpSession.vue         FTP 文件浏览器      │
+│        TransferQueue.vue      传输队列面板        │
+│        SettingsDialog.vue     设置对话框          │
+│        AboutDialog.vue        关于对话框          │
+│        CloseConfirmDialog.vue 关闭确认弹窗        │
+│      composables/                                │
+│        useAppInit.ts         应用初始化           │
+│        useTabManager.ts      标签页管理           │
+│        useTabPersistence.ts  tab/队列持久化       │
+│        useTabDrag.ts         标签页拖拽            │
+│        useTabContextMenu.ts  右键菜单              │
+│        useFtpCache.ts        FTP 缓存             │
+│        useWindowControls.ts  关闭确认              │
+│        useZoomPreview.ts     缩放预览              │
+│        useResizeOverlay.ts   窗口尺寸叠加          │
+│      services/                                    │
+│        sshService.ts         IPC 封装 (SSH/SFTP)  │
+│        settingsService.ts    IPC 封装 (Settings)  │
+│      utils/                                       │
+│        deepClone.ts          深拷贝工具            │
+│      assets/  (CSS/图标)                          │
+│      locales/                                     │
+│        zh-CN.json                                 │
+│        en.json                                    │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -61,8 +86,9 @@ OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 | `src/renderer/src/App.vue` | 布局、事件分发、状态路由 |
 | `src/renderer/src/components/SshTerminal.vue` | xterm.js 终端 |
 | `src/renderer/src/components/SshSession.vue` | 会话状态/快速命令面板/本地输入模式 |
-| `src/renderer/src/components/FtpSession.vue` | SFTP 文件列表/上传下载操作 |
-| `src/renderer/src/components/TransferQueue.vue` | 传输进度队列 |
+| `src/renderer/src/components/FtpSession.vue` | SFTP 文件列表/上传下载/收藏路径操作 |
+| `src/renderer/src/components/TransferQueue.vue` | 传输进度队列 (暂停/继续/取消/持久化) |
+| `src/renderer/src/components/CloseConfirmDialog.vue` | 关闭确认弹窗 |
 | `src/renderer/src/components/SettingsDialog.vue` | 设置对话框 (通用/显示/终端) |
 | `src/renderer/src/composables/useTabManager.ts` | 标签页交互逻辑封装 |
 | `src/renderer/src/services/sshService.ts` | 类型安全 IPC 服务封装 (SSH/SFTP) |
@@ -80,11 +106,36 @@ OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 | `ssh:disconnect` | send→on | `(id)` | 断开指定 SSH 连接 |
 | `sftp:connect` | invoke→handle | `(id)` | 建立 SFTP 连接 |
 | `sftp:readdir` | invoke→handle | `(id, path)` | 读取 FTP 目录 |
-| `sftp:download` | invoke→handle | `(id, path)` | 下载文件 |
-| `sftp:upload` | invoke→handle | `(id, path)` | 上传文件 |
+| `sftp:realpath` | invoke→handle | `(id, path)` | 获取远程真实路径 |
+| `sftp:download` | invoke→handle | `(id, path)` | 下载文件 (弹出保存对话框) |
+| `sftp:downloadDirect` | invoke→handle | `(id, path)` | 下载到默认目录 |
+| `sftp:upload` | invoke→handle | `(id, remoteDir)` | 上传文件 (打开文件对话框) |
+| `sftp:uploadFile` | invoke→handle | `(id, localPath, remotePath)` | 上传指定文件 |
+| `sftp:dragDownload` | send→on | `(id, path)` | 拖拽下载 (fastGet → temp) |
+| `transfer:progress` | send→on | `payload` | 传输进度事件 |
+| `transfer:complete` | send→on | `{id, localPath}` | 传输完成 |
+| `transfer:error` | send→on | `{id, error}` | 传输错误 |
+| `transfer:cancelled` | send→on | `{id}` | 传输已取消 |
+| `transfer:dragready` | send→on | — | 拖拽下载就绪 |
+| `transfer:pause` | send→on | `(transferId)` | 暂停传输 |
+| `transfer:resume` | send→on | `(transferId, tabId?, ..., connectionKey?)` | 继续传输 |
+| `transfer:cancel` | send→on | `(transferId)` | 取消传输 |
+| `transfer:cancelAll` | send→on | — | 取消全部传输 |
 | `store:getConnections` | invoke→handle | → `SshConnection[]` | 加载连接 |
-| `store:getSettings` | invoke→handle | → `AppSettings` | 加载设置 |
-| `app:getVersions` | invoke→handle | → `{electron,chrome,node}` | 获取版本 |
+| `store:saveConnections` | invoke→handle | `(connections)` | 保存连接 |
+| `store:getSettings` | invoke→handle | → `SettingsData` | 加载设置 |
+| `store:saveSettings` | invoke→handle | `(data)` | 保存设置 |
+| `dialog:openPrivateKey` | invoke→handle | → `{path, content}` | 选择私钥文件 |
+| `dialog:exportConnections` | invoke→handle | `(jsonString)` | 导出连接到文件 |
+| `dialog:importConnections` | invoke→handle | → parsed data | 从文件导入连接 |
+| `dialog:openFolder` | invoke→handle | → `string\|null` | 选择文件夹 |
+| `app:getVersion` | invoke→handle | → `string` | 获取应用版本 |
+| `app:getVersions` | invoke→handle | → `{electron,chrome,node}` | 获取框架版本 |
+| `app:getDefaultDownloadsPath` | invoke→handle | → `string` | 获取系统下载目录 |
+| `window:minimize` / `:maximize` / `:unmaximize` / `:close` | invoke→handle | — | 窗口控制 |
+| `window:isMaximized` | invoke→handle | → `boolean` | 窗口是否最大化 |
+| `window:getPosition` / `:setPosition` | invoke→handle | → `[x,y]` / `(x,y)` | 窗口位置 |
+| `shell:showItemInFolder` | invoke→handle | `(path)` | 在文件管理器中显示 |
 
 ## Dependencies
 
@@ -122,7 +173,27 @@ methods:
 └── saveToDisk()                          # 持久化(深拷贝剥离响应式)
 ```
 
-## SSH Manager (manager.ts)
+## Store (transfer.ts)
+
+```
+state (reactive)
+├── items: TransferItem[]     # 传输队列 (状态: active/paused/completed/error/cancelled)
+├── unseenUploads: number     # 未查看的上传项计数
+├── unseenDownloads: number   # 未查看的下载项计数
+├── queueOpen: boolean        # 队列是否处于打开状态
+└── lastActiveTab: 'upload' | 'download'  # 上次激活的标签
+
+methods:
+├── addOrUpdate(data)                # 添加新项或更新进度 (含 unseen 计数)
+├── markComplete(id) / markError(id, msg) / markCancelled(id)  # 状态标记
+├── markPaused(id) / markActive(id)  # 暂停/活跃切换
+├── removeItem(id)                   # 移除单条记录
+├── clearCompleted()                 # 清除已完成/已取消项
+├── clearUnseen()                    # 清除未查看计数
+├── setQueueOpen(val)                # 设置队列打开状态
+├── serializeQueue() → TransferItemData[]  # 序列化
+└── restoreQueue(data[])             # 反序列化恢复 (active → paused)
+```
 
 ```
 SshManager
@@ -133,7 +204,28 @@ SshManager
 ├── write(id, data)              # 键盘输入
 ├── resize(id, cols, rows)       # PTY resize
 ├── disconnect(id)               # 断开连接
-└── disconnectAll()              # 全部断开
+├── disconnectAll()              # 全部断开
+├── getConnectionKey(id)         # host:port:username
+├── findSessionByConnectionKey(key)  # 断线续传用匹配
+├── downloadControlled(id, remote, local, tid, onProgress, startOffset?)  # 分块并行下载
+├── uploadControlled(id, local, remote, tid, onProgress)    # 流式上传
+├── pauseTransfer(tid)           # 暂停传输
+├── resumeTransfer(tid)          # 继续传输
+├── cancelTransfer(tid)          # 取消传输
+└── cancelAllTransfers()         # 取消全部
+```
+
+## SFTP Manager (sftp.manager.ts)
+
+```
+下载策略:
+├── downloadControlled: 分块并行 (256KB 块 × 16 并发 sftp.read)
+│   ├── pause: 设标志，活跃块完成后停发新块
+│   ├── resume: 清标志，重新拉取未完成块
+│   └── cancel: 关 fd + handle，删 Map
+├── download (非可控): fastGet 并行下载（拖拽下载用）
+├── uploadControlled: createReadStream().pipe(createWriteStream)
+└── upload (非可控): fastPut 并行上传
 ```
 
 ## Known Conventions

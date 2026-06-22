@@ -1,6 +1,3 @@
-// 全局状态管理 — 管理标签页、已保存连接、会话面板状态
-// 使用 reactive + toRefs 模式保持响应式解构
-
 import { reactive, toRefs } from 'vue'
 import type { SshConnection, SshConnectionConfig } from '../../../main/ssh/types'
 import { v4 as uuidv4 } from 'uuid'
@@ -24,7 +21,6 @@ const state = reactive({
 })
 
 export function useConnectionStore() {
-  /** 添加新标签页 */
   function addTab(config: SshConnectionConfig, name: string): Tab {
     const id = uuidv4()
     const tab: Tab = {
@@ -33,7 +29,7 @@ export function useConnectionStore() {
       config: { ...config },
       connected: false,
       ftpConnected: false,
-      loading: false,
+      loading: true,
       error: null,
       subTab: 'ssh'
     }
@@ -42,7 +38,6 @@ export function useConnectionStore() {
     return tab
   }
 
-  /** 移除标签页并断开 SSH */
   function removeTab(id: string): void {
     window.api.disconnect(id)
     const idx = state.tabs.findIndex((t) => t.id === id)
@@ -57,13 +52,11 @@ export function useConnectionStore() {
     state.activeTabId = id
   }
 
-  /** 切换子标签页 */
   function setSubTab(id: string, subTab: 'ssh' | 'ftp'): void {
     const tab = state.tabs.find((t) => t.id === id)
     if (tab) tab.subTab = subTab
   }
 
-  /** 移动标签页位置 */
   function moveTab(fromIndex: number, toIndex: number): void {
     if (fromIndex === toIndex) return
     const [tab] = state.tabs.splice(fromIndex, 1)
@@ -78,7 +71,6 @@ export function useConnectionStore() {
     state.showSessions = false
   }
 
-  /** 从磁盘加载已保存的连接列表 */
   async function loadSavedConnections(): Promise<void> {
     const data: SshConnection[] = await window.api.getConnections()
     if (!data || data.length === 0) return
@@ -88,23 +80,10 @@ export function useConnectionStore() {
     }
   }
 
-  /** 保存连接（自动去重：同 host+port+username 则更新） */
   async function saveConnectionByConfig(
     config: SshConnectionConfig,
     name: string
   ): Promise<SshConnection> {
-    const existing = state.savedConnections.find(
-      (c) =>
-        c.config.host === config.host &&
-        c.config.port === config.port &&
-        c.config.username === config.username
-    )
-    if (existing) {
-      existing.name = name
-      existing.config = { ...config }
-      await saveToDisk()
-      return existing
-    }
     const conn: SshConnection = {
       id: uuidv4(),
       name,
@@ -116,7 +95,6 @@ export function useConnectionStore() {
     return conn
   }
 
-  /** 更新指定 ID 的连接 */
   async function updateConnection(
     id: string,
     config: SshConnectionConfig,
@@ -129,7 +107,6 @@ export function useConnectionStore() {
     await saveToDisk()
   }
 
-  /** 移动已保存连接（拖拽排序） */
   async function moveSavedConnection(fromIndex: number, toIndex: number): Promise<void> {
     if (fromIndex === toIndex) return
     const [conn] = state.savedConnections.splice(fromIndex, 1)
@@ -137,7 +114,6 @@ export function useConnectionStore() {
     await saveToDisk()
   }
 
-  /** 删除连接 */
   async function deleteConnection(id: string): Promise<void> {
     const idx = state.savedConnections.findIndex((c) => c.id === id)
     if (idx !== -1) {
@@ -146,7 +122,6 @@ export function useConnectionStore() {
     }
   }
 
-  /** 持久化到磁盘 */
   async function saveToDisk(): Promise<void> {
     const plain = state.savedConnections.map((c) => JSON.parse(JSON.stringify(c)))
     await window.api.saveConnections(plain)

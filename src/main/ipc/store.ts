@@ -4,30 +4,9 @@ import { ipcMain, safeStorage } from 'electron'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
+import { IPC } from '../../shared/ipcChannels'
+import type { AppSettings, SettingsData } from '../../shared/types'
 import { SshConnection } from '../ssh/types'
-import { SshConnectionConfig } from '../ssh/types'
-
-export interface AppSettings {
-  reopenTabs: boolean
-  autoFtp: boolean
-  useSystemTitleBar: boolean
-  fontSize: number
-  zoom: number
-  locale: string
-  theme: string
-  windowWidth: number
-  windowHeight: number
-}
-
-interface SavedTab {
-  name: string
-  config: SshConnectionConfig
-}
-
-interface SettingsData {
-  settings: AppSettings
-  tabs: SavedTab[]
-}
 
 /** 获取持久化文件路径：{userData}/config/connections.json */
 function getStorePath(): string {
@@ -100,7 +79,10 @@ export function loadSettings(): SettingsData {
         locale: 'zh-CN',
         theme: 'mocha',
         windowWidth: 900,
-        windowHeight: 670
+        windowHeight: 670,
+        defaultDownloadPath: '',
+        askDownloadLocation: true,
+        showQueueOnDownload: false
       },
       tabs: []
     }
@@ -126,28 +108,31 @@ export function loadSettingsData(): AppSettings {
       locale: 'zh-CN',
       theme: 'mocha',
       windowWidth: 900,
-      windowHeight: 670
+      windowHeight: 670,
+      defaultDownloadPath: '',
+      askDownloadLocation: true,
+      showQueueOnDownload: false
     }
   }
 }
 
 export function registerStoreIpc(): void {
-  ipcMain.handle('store:getConnections', async (): Promise<SshConnection[]> => {
+  ipcMain.handle(IPC.STORE_GET_CONNECTIONS, async (): Promise<SshConnection[]> => {
     return loadConnections()
   })
 
   ipcMain.handle(
-    'store:saveConnections',
+    IPC.STORE_SAVE_CONNECTIONS,
     async (_event, connections: SshConnection[]): Promise<void> => {
       saveConnections(connections)
     }
   )
 
-  ipcMain.handle('store:getSettings', async (): Promise<SettingsData> => {
+  ipcMain.handle(IPC.STORE_GET_SETTINGS, async (): Promise<SettingsData> => {
     return loadSettings()
   })
 
-  ipcMain.handle('store:saveSettings', async (_event, data: SettingsData): Promise<void> => {
+  ipcMain.handle(IPC.STORE_SAVE_SETTINGS, async (_event, data: SettingsData): Promise<void> => {
     saveSettings(data)
   })
 }

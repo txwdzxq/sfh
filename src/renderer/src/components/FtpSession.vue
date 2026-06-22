@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // FTP/SFTP 文件浏览器组件 — 显示远程目录、导航、下载文件
 
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from '../stores/connection'
+import { useSettingsStore } from '../stores/settings'
 import { sshService } from '../services/sshService'
 import type { SftpEntry } from '../../../main/ssh/types'
 
@@ -15,6 +16,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   loaded: [data: { path: string; entries: SftpEntry[] }]
+  downloadStart: [x: number, y: number, filename: string]
+  showQueue: []
 }>()
 
 const { tabs } = useConnectionStore()
@@ -31,6 +34,37 @@ const editRef = ref<HTMLInputElement>()
 const showHidden = ref(false)
 const dragOver = ref(false)
 let dragCounter = 0
+const settingsStore = useSettingsStore()
+const bookmarks = computed(() => settingsStore.savedFtpBookmarks.value)
+const showBookmarks = ref(false)
+
+const isBookmarked = computed(() => bookmarks.value.some((b) => b.path === currentPath.value))
+
+function toggleBookmark(): void {
+  if (isBookmarked.value) {
+    settingsStore.savedFtpBookmarks.value = bookmarks.value.filter(
+      (b) => b.path !== currentPath.value
+    )
+  } else {
+    settingsStore.savedFtpBookmarks.value = [...bookmarks.value, { path: currentPath.value }]
+  }
+  settingsStore.flush()
+}
+
+function toggleBookmarks(): void {
+  showBookmarks.value = !showBookmarks.value
+}
+
+async function removeBookmark(path: string, e: MouseEvent): Promise<void> {
+  e.stopPropagation()
+  settingsStore.savedFtpBookmarks.value = bookmarks.value.filter((b) => b.path !== path)
+  await settingsStore.flush()
+}
+
+function jumpToBookmark(path: string): void {
+  showBookmarks.value = false
+  if (path !== currentPath.value) loadDir(path)
+}
 
 /** 根据 showHidden 过滤显示条目 */
 const visibleEntries = computed(() =>
@@ -119,12 +153,13 @@ async function loadDir(path: string): Promise<void> {
 }
 
 /** 点击条目 */
-function handleClick(entry: SftpEntry): void {
+function handleClick(entry: SftpEntry, e: MouseEvent): void {
   if (entry.type === 'directory') {
     const path =
       currentPath.value === '.' ? entry.filename : currentPath.value + '/' + entry.filename
     loadDir(path)
   } else {
+    emit('downloadStart', e.clientX, e.clientY, entry.filename)
     handleDownload(entry.filename)
   }
 }
@@ -140,6 +175,7 @@ function goUp(): void {
 /** 下载文件（弹出保存对话框） */
 async function handleDownload(filename: string): Promise<void> {
   const remotePath = currentPath.value === '.' ? filename : currentPath.value + '/' + filename
+  emit('showQueue')
   try {
     await sshService.download(props.tabId, remotePath)
   } catch (err: unknown) {
@@ -270,7 +306,16 @@ onMounted(() => {
   } else {
     loadDir('.')
   }
+  document.addEventListener('click', handleDocClick)
 })
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocClick)
+})
+
+function handleDocClick(): void {
+  showBookmarks.value = false
+}
 </script>
 
 <template>
@@ -356,6 +401,38 @@ onMounted(() => {
             >
           </template>
         </template>
+        <button
+          class="bookmark-btn star"
+          :class="{ active: isBookmarked }"
+          :title="isBookmarked ? $t('ftpSession.bookmarked') : $t('ftpSession.bookmarkCurrent')"
+          @click.stop="toggleBookmark"
+        >{{ isBookmarked ? '★' : '☆' }}</button>
+      </div>
+      <div class="bookmark-wrapper" @click.stop>
+        <button
+          class="bookmark-btn dropdown-toggle"
+          :class="{ open: showBookmarks }"
+          :title="$t('ftpSession.bookmarks')"
+          @click.stop="toggleBookmarks"
+        >✪</button>
+        <div v-if="showBookmarks" class="bookmark-dropdown">
+          <div v-if="bookmarks.length === 0" class="bookmark-empty">
+            {{ $t('ftpSession.noBookmarks') }}
+          </div>
+          <div
+            v-for="bm in bookmarks"
+            :key="bm.path"
+            class="bookmark-item"
+            @click="jumpToBookmark(bm.path)"
+          >
+            <span class="bookmark-item-path">★ {{ bm.path }}</span>
+            <button
+              class="bookmark-remove"
+              :title="$t('ftpSession.removeBookmark')"
+              @click.stop="removeBookmark(bm.path, $event)"
+            >✕</button>
+          </div>
+        </div>
       </div>
       <button class="toolbar-btn" @click="handleUpload">
         <svg
@@ -411,7 +488,7 @@ onMounted(() => {
         class="ftp-item"
         :class="{ dir: entry.type === 'directory' }"
         :draggable="entry.type === 'file'"
-        @click="handleClick(entry)"
+        @click="handleClick(entry, $event)"
         @dragstart="onDragStart($event, entry)"
         @dragend="onDragEnd(entry)"
       >
@@ -578,6 +655,111 @@ onMounted(() => {
   font-family: inherit;
   font-size: inherit;
   padding: 0;
+}
+
+.bookmark-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.bookmark-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.bookmark-btn.star {
+  margin-left: auto;
+  padding: 2px 4px;
+  font-size: 14px;
+}
+
+.bookmark-btn.star:hover,
+.bookmark-btn.star.active {
+  color: var(--accent);
+}
+
+.bookmark-btn.dropdown-toggle {
+  padding: 2px 4px;
+  font-size: 14px;
+}
+
+.bookmark-btn.dropdown-toggle:hover,
+.bookmark-btn.dropdown-toggle.open {
+  color: var(--accent);
+}
+
+.bookmark-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 240px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  padding: 4px 0;
+}
+
+.bookmark-empty {
+  padding: 12px 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  font-family: inherit;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.bookmark-item:hover {
+  background: var(--bg-overlay);
+}
+
+.bookmark-item-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.bookmark-item:hover .bookmark-remove {
+  opacity: 1;
+}
+
+.bookmark-remove:hover {
+  color: var(--danger);
 }
 
 .ftp-status {

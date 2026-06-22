@@ -1,44 +1,6 @@
-import { reactive } from 'vue'
-import type { SshConnectionConfig } from '../../../main/ssh/types'
-
-export type Theme = 'mocha' | 'macchiato' | 'frappe' | 'latte'
-
-export interface AppSettings {
-  reopenTabs: boolean
-  autoFtp: boolean
-  useSystemTitleBar: boolean
-  locale: string
-  fontSize: number
-  zoom: number
-  theme: Theme
-  windowWidth: number
-  windowHeight: number
-}
-
-interface SavedTab {
-  name: string
-  config: SshConnectionConfig
-}
-
-const state = reactive<{
-  settings: AppSettings
-  loaded: boolean
-}>({
-  settings: {
-    reopenTabs: false,
-    autoFtp: false,
-    useSystemTitleBar: true,
-    locale: 'zh-CN',
-    fontSize: 14,
-    zoom: 1,
-    theme: 'mocha',
-    windowWidth: 900,
-    windowHeight: 670
-  },
-  loaded: false
-})
-
-export let savedTabs: SavedTab[] = []
+import { reactive, toRefs } from 'vue'
+import type { AppSettings, SavedTab, Theme, TransferItemData, FtpBookmark } from '../../../shared/types'
+export type { Theme }
 
 const defaults: AppSettings = {
   reopenTabs: false,
@@ -49,53 +11,106 @@ const defaults: AppSettings = {
   zoom: 1,
   theme: 'mocha',
   windowWidth: 900,
-  windowHeight: 670
+  windowHeight: 670,
+  defaultDownloadPath: '',
+  askDownloadLocation: true,
+  showQueueOnDownload: false
 }
+
+const state = reactive({
+  ...defaults,
+  savedTabs: [] as SavedTab[],
+  savedTransfers: [] as TransferItemData[],
+  savedFtpBookmarks: [] as FtpBookmark[],
+  loaded: false
+})
 
 export function useSettingsStore() {
   async function load(): Promise<void> {
     try {
       const data = await window.api.getSettings()
-      state.settings = { ...defaults, ...data.settings }
-      savedTabs = data.tabs
+      if (data.settings) {
+        Object.assign(state, defaults, data.settings)
+      }
+      state.savedTabs = data.tabs || []
+      state.savedTransfers = data.transfers || []
+      state.savedFtpBookmarks = data.ftpBookmarks || []
     } catch {
-      state.settings = { ...defaults }
-      savedTabs = []
+      Object.assign(state, defaults)
+      state.savedTabs = []
+      state.savedTransfers = []
+      state.savedFtpBookmarks = []
     }
     state.loaded = true
   }
 
   async function save(): Promise<void> {
-    const data = JSON.parse(JSON.stringify({ settings: state.settings, tabs: savedTabs }))
+    const data = JSON.parse(
+      JSON.stringify({
+        settings: extractSettings(),
+        tabs: state.savedTabs,
+        transfers: state.savedTransfers,
+        ftpBookmarks: state.savedFtpBookmarks
+      })
+    )
     await window.api.saveSettings(data)
   }
 
+  function extractSettings(): AppSettings {
+    return {
+      reopenTabs: state.reopenTabs,
+      autoFtp: state.autoFtp,
+      useSystemTitleBar: state.useSystemTitleBar,
+      locale: state.locale,
+      fontSize: state.fontSize,
+      zoom: state.zoom,
+      theme: state.theme,
+      windowWidth: state.windowWidth,
+      windowHeight: state.windowHeight,
+      defaultDownloadPath: state.defaultDownloadPath,
+      askDownloadLocation: state.askDownloadLocation,
+      showQueueOnDownload: state.showQueueOnDownload
+    }
+  }
+
   function setReopenTabs(val: boolean): void {
-    state.settings.reopenTabs = val
+    state.reopenTabs = val
   }
 
   function setAutoFtp(val: boolean): void {
-    state.settings.autoFtp = val
+    state.autoFtp = val
   }
 
   function setUseSystemTitleBar(val: boolean): void {
-    state.settings.useSystemTitleBar = val
+    state.useSystemTitleBar = val
   }
 
   function setLocale(val: string): void {
-    state.settings.locale = val
+    state.locale = val
   }
 
   function setFontSize(val: number): void {
-    state.settings.fontSize = val
+    state.fontSize = val
   }
 
   function setZoom(val: number): void {
-    state.settings.zoom = val
+    state.zoom = val
   }
 
   function setTheme(val: Theme): void {
-    state.settings.theme = val
+    state.theme = val
+  }
+
+  function setDefaultDownloadPath(val: string): void {
+    state.defaultDownloadPath = val
+  }
+
+  function setAskDownloadLocation(val: boolean): void {
+    state.askDownloadLocation = val
+  }
+
+  function setShowQueueOnDownload(val: boolean): void {
+    state.showQueueOnDownload = val
   }
 
   async function flush(): Promise<void> {
@@ -103,8 +118,7 @@ export function useSettingsStore() {
   }
 
   return {
-    state,
-    savedTabs,
+    ...toRefs(state),
     load,
     save,
     setReopenTabs,
@@ -114,6 +128,9 @@ export function useSettingsStore() {
     setFontSize,
     setZoom,
     setTheme,
+    setDefaultDownloadPath,
+    setAskDownloadLocation,
+    setShowQueueOnDownload,
     flush
   }
 }

@@ -9,6 +9,11 @@ export interface ShellSession {
 
 export class SSHShellManager {
   private sessions = new Map<string, ShellSession>()
+  private sessionConfigs = new Map<string, string>() // id → connectionKey
+
+  private static connectionKey(config: SshConnectionConfig): string {
+    return `${config.host}:${config.port}:${config.username}`
+  }
 
   onData: ((id: string, data: string) => void) | null = null
   onError: ((id: string, message: string) => void) | null = null
@@ -39,6 +44,7 @@ export class SSHShellManager {
             return reject(err)
           }
           this.sessions.set(id, { client, shell, config })
+          this.sessionConfigs.set(id, SSHShellManager.connectionKey(config))
           shell.on('data', (d) => this.onData?.(id, d.toString()))
           shell.stderr?.on('data', (d) => this.onData?.(id, d.toString()))
           shell.stderr?.on('error', (e) =>
@@ -89,6 +95,10 @@ export class SSHShellManager {
     return this.sessions.get(id)
   }
 
+  hasSession(id: string): boolean {
+    return this.sessions.has(id)
+  }
+
   disconnect(id: string): void {
     const s = this.sessions.get(id)
     if (s) {
@@ -103,6 +113,18 @@ export class SSHShellManager {
         console.error(`[ssh] error ending client for ${id}:`, e)
       }
       this.sessions.delete(id)
+      this.sessionConfigs.delete(id)
     }
+  }
+
+  getConnectionKey(id: string): string | undefined {
+    return this.sessionConfigs.get(id)
+  }
+
+  findSessionByConnectionKey(key: string): string | undefined {
+    for (const [id, k] of this.sessionConfigs) {
+      if (k === key) return id
+    }
+    return undefined
   }
 }

@@ -13,7 +13,7 @@
 - Deduplication key: `host + port + username` (updates existing on match)
 - Saved connections list shown in Sessions Panel (floating panel activated from sidebar)
 - Edit / delete saved connections
-- Import / export connections as JSON file
+- Import / export connections as JSON file (SVG icons in panel header)
 - Drag-and-drop to reorder saved connection list
 
 ### 1.3 Connection Lifecycle
@@ -37,6 +37,11 @@
 - "Reopen tabs on startup" option (settings)
 - Tab list saved on every add/close/drag — not on every connection status change
 - Tabs restored on startup: each creates new SSH connection with saved config
+
+### 2.3 Close Confirmation
+- When closing window with active transfers, a confirmation dialog appears
+- Dialog lists transfer count, Cancel (stays open) / Close (cancels transfers & quits)
+- Before close: `cancelAllTransfers()` → persist tabs + transfers to disk
 
 ## 3. Terminal
 
@@ -86,15 +91,27 @@
 - Inline path editing (click to edit, Enter to confirm)
 - Toggle hidden files (.dotfiles)
 - Sort: directories first, then alphabetical by filename
+- Current path shown in address bar with selectable segments
 
 ### 5.2 File Operations
-- Upload: drag files from system into FTP panel
-- Download: drag files from FTP panel out (sets `effectAllowed: copy`)
-- Upload progress: per-file progress via `sftp.fastPut` step callback
-- Download progress: per-file progress via `sftp.fastGet` step callback
-- Transfer queue panel: uploads/downloads tabs, progress bars, speed display
+- Upload: click upload button → native file dialog → per-file streamed upload
+- Download: click file → save dialog → chunked parallel download (256KB × 16 concurrent)
+- Drag to download: drag files from FTP panel out → `fastGet` to temp → native drag event
+- Upload progress: per-file via `createReadStream().pipe(sftp.createWriteStream())`
+- Download progress: per-file via chunked `sftp.read` callbacks (16 parallel reads)
+- Pause/Resume: set flag stops new chunks; resume re-starts pending chunks
+- Cancel: destroy all streams + close fd/handle; status shown as "cancelled" (grey)
+- Cancel does NOT delete partially downloaded file
 
-### 5.3 Cache
+### 5.3 Path Bookmarks
+- ★ button inside address bar: toggle bookmark on current path
+- ✪ button outside address bar: opens dropdown menu of saved bookmarks
+- Click bookmark in dropdown → navigate to that path
+- Delete bookmark from dropdown
+- Bookmarks stored in `{userData}/config/settings.json` under `ftpBookmarks` key
+- Shared globally across all connections (not per-connection)
+
+### 5.4 Cache
 - FTP cache keyed by tab ID, stored in App.vue
 - Prevents re-fetch on sub-tab switch
 - Cleared on tab close or reconnect
@@ -118,20 +135,47 @@
 - Vertical toolbar with icon buttons:
   - New connection
   - Sessions panel toggle
-  - Transfer queue toggle
+  - Transfer queue toggle (badge: unseen upload/download counts)
   - Settings
   - About
 
 ### 6.4 Sessions Panel
 - Floating panel with saved connection list
-- Export (⤊) / Import (⤋) buttons in header
+- Export / Import buttons in header (SVG icons)
 - Drag-and-drop reorder with blue top/bottom border indicator
 - Edit (pencil) / Delete (×) per session
 
 ### 6.5 Transfer Queue
 - Floating panel with Uploads / Downloads sub-tabs
-- Each item: filename, progress bar, speed, status (active/completed/error)
-- Clear completed button
+- Per-item buttons:
+  - active: ⏸ Pause, ✕ Cancel
+  - paused: ▶ Resume, ✕ Cancel
+  - completed: 📁 Open folder (downloads only)
+  - error: ↻ Retry (downloads with tabId+remotePath), ✕ Remove
+  - cancelled: ↻ Retry (downloads with tabId+remotePath), ✕ Remove
+- Each item: filename, progress bar, transferred/total, speed (active only), status label
+- Status labels: active (progress%), paused (yellow), error (red), done (dim), cancelled (grey)
+- Clear completed button (removes completed + cancelled + error items)
+- Queue state persisted on window close: active items saved as "paused"
+- Queue restored on startup: active → paused; download can resume if SSH session reconnects
+- Connection matching for resume: `connectionKey` = `host:port:username`
+- Last active sub-tab (uploads/downloads) remembered across sessions
+- Unseen count: increment when queue closed and new item added
+
+#### 6.5.1 Download Engine
+- Chunked parallel download (default: 256KB chunks, 16 concurrent reads)
+- Uses raw `sftp.read(handle, buf, 0, len, offset, cb)` → `fs.write(fd, buf, 0, bytes, offset, cb)`
+- Download speed on par with `fastGet` (~4 MB/s on typical connections)
+- Resume: skip already-downloaded chunks via `startOffset`, open local file in `r+` mode
+- Pause: set flag, active chunks finish, no new chunks dispatched
+- Resume: clear flag, re-enter chunk dispatch loop for pending chunks
+- Cancel: set flag, close fd + handle, delete from transfer map
+
+#### 6.5.2 Upload Engine
+- Streamed upload: `fs.createReadStream().pipe(sftp.createWriteStream())`
+- Pause: `readStream.pause()` + flag
+- Resume: `readStream.resume()` + clear flag
+- Cancel: `readStream.destroy()` + `writeStream.destroy()` + close handle
 
 ## 7. Settings
 
@@ -147,11 +191,16 @@
 ### 7.3 Terminal Tab
 - Font size (slider 8-32, instant update)
 
+### 7.4 Transfer Tab
+- Default download path: path selector with reset-to-default button
+- Ask for save location before downloading (toggle)
+- Show queue when downloading (toggle; auto-switches to Downloads tab)
+
 ## 8. Internationalization
 
 - Runtime language switch via `vue-i18n` (no restart)
 - Supported: zh-CN, en
-- ~100+ keys covering all UI labels and messages
+- 150+ keys covering all UI labels and messages
 - Fallback locale: en
 
 ## 9. Security
@@ -177,4 +226,4 @@
 
 Files:
 - `connections.json` — encrypted saved connections
-- `settings.json` — settings + saved tab list
+- `settings.json` — settings + saved tab list + transfer queue + FTP bookmarks

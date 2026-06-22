@@ -23,7 +23,6 @@ export function useTabManager() {
   )
 
   return {
-    connectionStore,
     sessionRefs,
     setSessionRef
   }

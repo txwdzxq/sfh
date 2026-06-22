@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../build/icon.png?asset'
+import { IPC } from '../shared/ipcChannels'
 import { registerSshIpc } from './ipc/ssh'
 import { registerStoreIpc, loadSettingsData, saveSettings, loadSettings } from './ipc/store'
 import { registerDialogIpc } from './ipc/dialog'
@@ -79,27 +80,30 @@ app.whenReady().then(() => {
   registerSshIpc()
   registerStoreIpc()
   registerDialogIpc()
-  ipcMain.handle('app:getVersion', () => app.getVersion())
-  ipcMain.handle('app:getVersions', () => ({
+  ipcMain.handle(IPC.APP_GET_DEFAULT_DOWNLOADS_PATH, () => app.getPath('downloads'))
+  ipcMain.handle(IPC.APP_GET_VERSION, () => app.getVersion())
+  ipcMain.handle(IPC.APP_GET_VERSIONS, () => ({
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node
   }))
 
   // 窗口控制
-  ipcMain.handle('window:minimize', () => mainWindow?.minimize())
-  ipcMain.handle('window:maximize', () => {
+  ipcMain.handle(IPC.WINDOW_MINIMIZE, () => mainWindow?.minimize())
+  ipcMain.handle(IPC.WINDOW_MAXIMIZE, () => {
     if (mainWindow?.isMaximized()) {
       mainWindow.unmaximize()
     } else {
       mainWindow?.maximize()
     }
   })
-  ipcMain.handle('window:close', () => mainWindow?.close())
-  ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false)
-  ipcMain.handle('window:unmaximize', () => mainWindow?.unmaximize())
-  ipcMain.handle('window:getPosition', () => mainWindow?.getPosition())
-  ipcMain.handle('window:setPosition', (_e, x: number, y: number) => mainWindow?.setPosition(x, y))
+  ipcMain.handle(IPC.WINDOW_CLOSE, () => mainWindow?.close())
+  ipcMain.handle(IPC.WINDOW_IS_MAXIMIZED, () => mainWindow?.isMaximized() ?? false)
+  ipcMain.handle(IPC.WINDOW_UNMAXIMIZE, () => mainWindow?.unmaximize())
+  ipcMain.handle(IPC.WINDOW_GET_POSITION, () => mainWindow?.getPosition())
+  ipcMain.handle(IPC.WINDOW_SET_POSITION, (_e, x: number, y: number) =>
+    mainWindow?.setPosition(x, y)
+  )
 
   const settings = loadSettingsData()
   createWindow(settings.useSystemTitleBar ?? true)

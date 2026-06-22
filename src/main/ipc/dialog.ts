@@ -2,12 +2,21 @@
 
 import { ipcMain, dialog } from 'electron'
 import { readFileSync, writeFileSync, statSync } from 'fs'
+import { IPC } from '../../shared/ipcChannels'
 
 const MAX_KEY_FILE_SIZE = 1024 * 1024 // 1MB
 const MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 export function registerDialogIpc(): void {
-  ipcMain.handle('dialog:openPrivateKey', async () => {
+  ipcMain.handle(IPC.DIALOG_OPEN_FOLDER, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory']
+    })
+    if (result.canceled) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle(IPC.DIALOG_OPEN_PRIVATE_KEY, async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
@@ -22,7 +31,7 @@ export function registerDialogIpc(): void {
     return { path: filePath, content }
   })
 
-  ipcMain.handle('dialog:exportConnections', async (_event, data: string) => {
+  ipcMain.handle(IPC.DIALOG_EXPORT_CONNECTIONS, async (_event, data: string) => {
     if (typeof data !== 'string') throw new Error('Invalid data')
     if (data.length > MAX_IMPORT_FILE_SIZE) throw new Error('Data too large')
     const result = await dialog.showSaveDialog({
@@ -34,7 +43,7 @@ export function registerDialogIpc(): void {
     return true
   })
 
-  ipcMain.handle('dialog:importConnections', async () => {
+  ipcMain.handle(IPC.DIALOG_IMPORT_CONNECTIONS, async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [{ name: 'JSON', extensions: ['json'] }]

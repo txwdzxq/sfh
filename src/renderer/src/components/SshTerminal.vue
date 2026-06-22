@@ -87,7 +87,7 @@ async function copySelection() {
 
 // 监听字体大小变化
 watch(
-  () => settingsStore.state.settings.fontSize,
+  () => settingsStore.fontSize.value,
   (val) => {
     if (terminal) {
       terminal.options.fontSize = val
@@ -98,7 +98,7 @@ watch(
 
 // 监听主题变化
 watch(
-  () => settingsStore.state.settings.theme,
+  () => settingsStore.theme.value,
   () => {
     if (terminal) {
       terminal.options.theme = getThemeColors()
@@ -113,7 +113,7 @@ function initTerminal(): void {
   terminal = new Terminal({
     cursorBlink: true,
     cursorStyle: 'block',
-    fontSize: settingsStore.state.settings.fontSize,
+    fontSize: settingsStore.fontSize.value,
     fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
     allowTransparency: true,
     theme: getThemeColors()

@@ -18,8 +18,13 @@ const emit = defineEmits<{
   reorder: [fromIndex: number, toIndex: number]
 }>()
 
+const pinned = ref(false)
 const dragIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
+
+function closeOverlay(): void {
+  if (!pinned.value) emit('close')
+}
 
 function onDragStart(index: number): void {
   dragIndex.value = index
@@ -50,16 +55,27 @@ function onDragEnd(): void {
 
 <template>
   <!-- 遮罩层：点击关闭面板 -->
-  <div class="panel-overlay" @click="emit('close')"></div>
-  <div class="panel">
+  <div class="panel-overlay" @click="closeOverlay"></div>
+  <div class="panel" :class="{ pinned }">
     <div class="panel-header">
-      <span class="panel-title">{{ $t('sessionsPanel.title') }}</span>
+      <div class="panel-header-left">
+        <span class="panel-title">{{ $t('sessionsPanel.title') }}</span>
+        <button class="pin-btn" :class="{ active: pinned }" :title="$t('sessionsPanel.pin')" @click="pinned = !pinned">📌︎</button>
+      </div>
       <div class="header-actions">
         <button class="header-btn" :title="$t('sessionsPanel.export')" @click="emit('export')">
-          ⤊
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
         </button>
         <button class="header-btn" :title="$t('sessionsPanel.import')" @click="emit('import')">
-          ⤋
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 13 12 18 17 13" />
+            <line x1="12" y1="18" x2="12" y2="3" />
+          </svg>
         </button>
         <button class="close-btn" @click="emit('close')">&times;</button>
       </div>
@@ -193,6 +209,29 @@ function onDragEnd(): void {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pin-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 2px;
+  transition: color 0.15s;
+}
+
+.pin-btn:hover,
+.pin-btn.active {
+  color: var(--accent);
 }
 
 .header-actions {

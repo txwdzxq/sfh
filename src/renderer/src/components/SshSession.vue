@@ -158,16 +158,6 @@ onUnmounted(() => {
 
 <template>
   <div class="session-container">
-    <div v-if="status === 'connecting'" class="status-bar">
-      <span class="spinner"></span>
-      {{ $t('sshSession.connecting', { host: config.host, port: config.port }) }}
-    </div>
-    <div v-if="status === 'error'" class="status-bar error">
-      {{ $t('sshSession.connectionFailed', { msg: errorMsg }) }}
-    </div>
-    <div v-if="status === 'disconnected'" class="status-bar disconnected">
-      {{ $t('sshSession.connectionClosed') }}
-    </div>
     <SshTerminal
       v-if="status !== 'error'"
       ref="terminalRef"
@@ -242,42 +232,6 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.status-bar {
-  padding: 6px 12px;
-  font-size: 12px;
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-bar.error {
-  background: color-mix(in srgb, var(--bg-base), var(--danger) 12%);
-  color: var(--danger);
-}
-
-.status-bar.disconnected {
-  background: var(--bg-surface);
-  color: var(--text-muted);
-}
-
-.spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--bg-overlay);
-  border-top: 2px solid var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .local-input-bar {

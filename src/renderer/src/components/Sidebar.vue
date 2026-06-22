@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useTransferStore } from '../stores/transfer'
+
 defineProps<{
   showDialog: boolean
   sessionsActive: boolean
@@ -12,6 +15,15 @@ const emit = defineEmits<{
   settings: []
   about: []
 }>()
+
+const { unseenUploads, unseenDownloads } = useTransferStore()
+const queueBtnRef = ref<HTMLElement | null>(null)
+
+defineExpose({ queueBtnRef })
+
+function badgeCount(n: number): string {
+  return n > 9 ? '9+' : String(n)
+}
 </script>
 
 <template>
@@ -65,12 +77,22 @@ const emit = defineEmits<{
     </div>
     <div class="sidebar-bottom">
       <button
+        ref="queueBtnRef"
+        data-queue-btn
         class="sidebar-btn"
         :class="{ active: queueActive }"
         :title="$t('sidebar.transfers.title')"
         @click="emit('queue')"
       >
-        <span class="queue-icon">↑↓</span>
+        <div class="queue-icon-wrap">
+          <span v-if="unseenUploads > 0" class="badge badge-ul">{{
+            badgeCount(unseenUploads)
+          }}</span>
+          <span class="queue-icon">↑↓</span>
+          <span v-if="unseenDownloads > 0" class="badge badge-dl">{{
+            badgeCount(unseenDownloads)
+          }}</span>
+        </div>
         <span class="btn-label">{{ $t('sidebar.transfers.label') }}</span>
       </button>
       <button class="sidebar-btn" :title="$t('sidebar.settings.title')" @click="emit('settings')">
@@ -172,5 +194,38 @@ const emit = defineEmits<{
 .queue-icon {
   font-size: 16px;
   line-height: 1;
+}
+
+.queue-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.badge {
+  position: absolute;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  pointer-events: none;
+}
+
+.badge-ul {
+  top: -6px;
+  left: -6px;
+}
+
+.badge-dl {
+  top: -6px;
+  right: -6px;
 }
 </style>

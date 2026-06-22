@@ -37,6 +37,18 @@ export class SshManager {
     this.shellManager.disconnect(id)
   }
 
+  hasSession(id: string): boolean {
+    return this.shellManager.hasSession(id)
+  }
+
+  getConnectionKey(id: string): string | undefined {
+    return this.shellManager.getConnectionKey(id)
+  }
+
+  findSessionByConnectionKey(key: string): string | undefined {
+    return this.shellManager.findSessionByConnectionKey(key)
+  }
+
   // SFTP 代理
   async connectSftp(id: string): Promise<void> {
     await this.sftpManager.connectSftp(id)
@@ -66,6 +78,43 @@ export class SshManager {
     onProgress?: (t: number, total: number) => void
   ): Promise<void> {
     return await this.sftpManager.download(id, remotePath, localPath, onProgress)
+  }
+
+  async downloadControlled(
+    id: string,
+    remotePath: string,
+    localPath: string,
+    transferId: string,
+    onProgress?: (t: number, total: number) => void,
+    startOffset?: number
+  ): Promise<void> {
+    return await this.sftpManager.downloadControlled(id, remotePath, localPath, transferId, onProgress, startOffset)
+  }
+
+  pauseTransfer(tid: string): boolean {
+    return this.sftpManager.pauseTransfer(tid)
+  }
+
+  resumeTransfer(tid: string): boolean {
+    return this.sftpManager.resumeTransfer(tid)
+  }
+
+  cancelTransfer(tid: string): boolean {
+    return this.sftpManager.cancelTransfer(tid)
+  }
+
+  async uploadControlled(
+    id: string,
+    localPath: string,
+    remotePath: string,
+    transferId: string,
+    onProgress?: (t: number, total: number) => void
+  ): Promise<void> {
+    return await this.sftpManager.uploadControlled(id, localPath, remotePath, transferId, onProgress)
+  }
+
+  cancelAllTransfers(): void {
+    this.sftpManager.cancelAllTransfers()
   }
 }
 

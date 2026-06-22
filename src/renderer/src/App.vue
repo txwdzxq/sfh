@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, watch, nextTick, toRefs } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from './stores/connection'
-import { useSettingsStore, savedTabs } from './stores/settings'
+import { useSettingsStore } from './stores/settings'
+import { useTransferStore } from './stores/transfer'
 import './assets/themes.css'
 import { useTabManager } from './composables/useTabManager'
+import { useAppInit } from './composables/useAppInit'
+import { useFtpCache } from './composables/useFtpCache'
+import { useTabDrag } from './composables/useTabDrag'
+import { useTabContextMenu } from './composables/useTabContextMenu'
+import { useZoomPreview } from './composables/useZoomPreview'
+import { useResizeOverlay } from './composables/useResizeOverlay'
+import { useWindowControls } from './composables/useWindowControls'
+import { useTabPersistence } from './composables/useTabPersistence'
 import ConnectionDialog from './components/ConnectionDialog.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import AboutDialog from './components/AboutDialog.vue'
@@ -13,8 +22,8 @@ import FtpSession from './components/FtpSession.vue'
 import Sidebar from './components/Sidebar.vue'
 import SessionsPanel from './components/SessionsPanel.vue'
 import TransferQueue from './components/TransferQueue.vue'
+import CloseConfirmDialog from './components/CloseConfirmDialog.vue'
 import type { SshConnectionConfig, SshConnection } from '../../main/ssh/types'
-import type { SftpEntry } from '../../main/ssh/types'
 import type { Tab } from './stores/connection'
 
 const { t } = useI18n()
@@ -28,7 +37,6 @@ const {
   moveTab,
   toggleSessions,
   closeSessions,
-  loadSavedConnections,
   saveConnectionByConfig,
   updateConnection,
   deleteConnection,
@@ -36,64 +44,86 @@ const {
 } = connectionStore
 
 const { sessionRefs, setSessionRef } = useTabManager()
-const { tabs, activeTabId } = toRefs(connectionStore)
+const { tabs, activeTabId } = connectionStore
+const settingsStore = useSettingsStore()
+const { useSystemTitleBar } = settingsStore
+const { addOrUpdate, markComplete, markError, hasActive, restoreQueue, markCancelled, lastActiveTab } = useTransferStore()
 
+// 对话框
 const showDialog = defineModel<boolean>('showDialog', { default: false })
 const editSession = ref<SshConnection | null>(null)
 const showSettings = ref(false)
 const showAbout = ref(false)
 const showQueue = ref(false)
 const disconnectCleanup = ref<(() => void) | null>(null)
+const transferCleanups: (() => void)[] = []
 
-/** 右键菜单 */
-const contextMenu = ref<{ x: number; y: number; tabId: string } | null>(null)
-const menuEl = ref<HTMLElement | null>(null)
-let contextMenuCleanup: (() => void) | null = null
+interface FlyParticle {
+  id: number
+  x: number
+  y: number
+  filename: string
+}
+let particleId = 0
+const flyParticles = ref<FlyParticle[]>([])
 
-function onTabContextMenu(e: MouseEvent, tabId: string): void {
-  closeContextMenu()
-  contextMenu.value = { x: e.clientX, y: e.clientY, tabId }
-  nextTick(() => {
-    document.addEventListener('mousedown', onDocumentMouseDown)
-    contextMenuCleanup = () => document.removeEventListener('mousedown', onDocumentMouseDown)
-  })
+function onDownloadStart(x: number, y: number, filename: string): void {
+  const particle: FlyParticle = { id: ++particleId, x, y, filename }
+  if (flyParticles.value.length >= 2) flyParticles.value.shift()
+  flyParticles.value.push(particle)
+  nextTick(() => animateParticle(particle))
 }
 
-function closeContextMenu(): void {
-  contextMenu.value = null
-  contextMenuCleanup?.()
-  contextMenuCleanup = null
-}
-
-function onDocumentMouseDown(e: MouseEvent): void {
-  if (menuEl.value && !menuEl.value.contains(e.target as Node)) {
-    closeContextMenu()
+function onShowQueue(): void {
+  if (settingsStore.showQueueOnDownload.value) {
+    lastActiveTab.value = 'download'
+    showQueue.value = true
   }
 }
 
-const { state, load: loadSettings, flush: flushSettings } = useSettingsStore()
-const { locale } = useI18n()
-
-/** 预加载的 FTP 目录缓存 */
-interface FtpCacheEntry {
-  path: string
-  entries: SftpEntry[]
+function animateParticle(p: FlyParticle): void {
+  const el = document.getElementById('fly-' + p.id)
+  if (!el) return
+  const btn = document.querySelector<HTMLElement>('[data-queue-btn]')
+  if (!btn) return
+  const targetRect = btn.getBoundingClientRect()
+  const dx = targetRect.left + targetRect.width / 2 - p.x
+  const dy = targetRect.top + targetRect.height / 2 - p.y
+  const midX = dx * 0.5
+  const midY = dy * 0.3
+  el.animate(
+    [
+      { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+      { transform: `translate(${midX}px, ${midY}px) scale(0.7)`, opacity: 0.8 },
+      { transform: `translate(${dx}px, ${dy}px) scale(0.3)`, opacity: 0 }
+    ],
+    { duration: 500, easing: 'ease-out', fill: 'forwards' }
+  ).onfinish = () => {
+    flyParticles.value = flyParticles.value.filter((fp) => fp.id !== p.id)
+  }
 }
-const ftpCache = ref<Record<string, FtpCacheEntry>>({})
 
-function toPlain<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj))
-}
+// Composables
+const { ftpCache, handleFtpPreload, removeCache } = useFtpCache()
+const { contextMenu, openContextMenu, closeContextMenu } = useTabContextMenu()
+const { dragIndex, dragOverIndex, onDragStart, onDragOver, onDragLeave, doDrop, onDragEnd } =
+  useTabDrag()
+const { appTransform, onZoomDrag, onZoomApply } = useZoomPreview(() => settingsStore.zoom.value)
+const { windowSize, showSize, onResize, cleanup: resizeCleanup } = useResizeOverlay()
+const { persistTabs } = useTabPersistence()
+const {
+  minimizeWindow,
+  maximizeWindow,
+  closeWindow,
+  confirmClose,
+  cancelClose,
+  pendingClose,
+  onBeforeUnload
+} = useWindowControls(persistTabs, hasActive, () => window.api.cancelAllTransfers())
 
-async function persistTabs(): Promise<void> {
-  const list = tabs.value.map((t) => ({
-    name: t.name,
-    config: toPlain(t.config)
-  }))
-  savedTabs.length = 0
-  savedTabs.push(...list)
-  await flushSettings()
-}
+const { phase, initError, init: initApp, applyTheme } = useAppInit()
+
+const activeTab = computed(() => tabs.value.find((t) => t.id === activeTabId.value) || null)
 
 function openDialog(): void {
   editSession.value = null
@@ -144,7 +174,7 @@ async function handleSessionDelete(id: string): Promise<void> {
 }
 
 async function handleExport(): Promise<void> {
-  const data = JSON.stringify(savedConnections, null, 2)
+  const data = JSON.stringify(savedConnections.value, null, 2)
   await window.api.exportConnections(data)
 }
 
@@ -170,23 +200,10 @@ async function onConnected(tab: {
   console.log(`[app] tab connected`)
   tab.connected = true
   tab.loading = false
-  if (state.settings.autoFtp && tab.name && tab.config) {
-    try {
-      await window.api.connectSftp(tab.id)
-      tab.ftpConnected = true
-      const resolved = await window.api.realpath(tab.id, '.')
-      const list = await window.api.readdir(tab.id, resolved)
-      const filtered = list.filter((e) => e.filename !== '.' && e.filename !== '..')
-      filtered.sort((a, b) => {
-        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
-        return a.filename.localeCompare(b.filename)
-      })
-      ftpCache.value[tab.id] = { path: resolved, entries: filtered }
-    } catch (e) {
-      console.error('[app] ftp preload failed:', e)
-    }
+  if (settingsStore.autoFtp.value && tab.name && tab.config) {
+    const ok = await handleFtpPreload(tab.id)
+    if (ok) tab.ftpConnected = true
   }
-  // 连接成功后如果该标签是当前激活的，聚焦终端
   if (tab.id === activeTabId.value) {
     nextTick(() => sessionRefs.value[tab.id]?.focusAndFit())
   }
@@ -211,39 +228,40 @@ function toggleQueue(): void {
 }
 
 async function handleCloseTab(id: string): Promise<void> {
-  delete ftpCache.value[id]
+  removeCache(id)
   connectionStore.removeTab(id)
   await connectionStore.saveToDisk()
 }
 
-const dragIndex = ref<number | null>(null)
-const dragOverIndex = ref<number | null>(null)
-
-function onDragStart(index: number): void {
-  dragIndex.value = index
-}
-
-function onDragOver(index: number): void {
-  if (dragIndex.value === null || dragIndex.value === index) return
-  dragOverIndex.value = index
-}
-
-function onDragLeave(): void {
-  dragOverIndex.value = null
-}
-
-function onDrop(index: number): void {
-  if (dragIndex.value !== null && dragIndex.value !== index) {
-    moveTab(dragIndex.value, index)
-    persistTabs()
+async function closeTabsToLeft(id: string): Promise<void> {
+  const idx = tabs.value.findIndex((t) => t.id === id)
+  if (idx <= 0) return
+  const toClose = tabs.value.slice(0, idx)
+  for (const tab of toClose) {
+    removeCache(tab.id)
+    connectionStore.removeTab(tab.id)
   }
-  dragIndex.value = null
-  dragOverIndex.value = null
+  await connectionStore.saveToDisk()
 }
 
-function onDragEnd(): void {
-  dragIndex.value = null
-  dragOverIndex.value = null
+async function closeTabsToRight(id: string): Promise<void> {
+  const idx = tabs.value.findIndex((t) => t.id === id)
+  if (idx === -1 || idx >= tabs.value.length - 1) return
+  const toClose = tabs.value.slice(idx + 1)
+  for (const tab of toClose) {
+    removeCache(tab.id)
+    connectionStore.removeTab(tab.id)
+  }
+  await connectionStore.saveToDisk()
+}
+
+async function closeAllTabs(): Promise<void> {
+  const allIds = tabs.value.map((t) => t.id)
+  for (const id of allIds) {
+    removeCache(id)
+    connectionStore.removeTab(id)
+  }
+  await connectionStore.saveToDisk()
 }
 
 function onTabWheel(e: WheelEvent): void {
@@ -255,47 +273,11 @@ function onTabWheel(e: WheelEvent): void {
   setActiveTab(tabs.value[nextIdx].id)
 }
 
-function minimizeWindow(): void {
-  window.api.minimize()
-}
-
-function maximizeWindow(): void {
-  window.api.maximize()
-}
-
-async function closeWindow(): Promise<void> {
-  await persistTabs()
-  window.api.close()
-}
-
-function onBeforeUnload(): void {
-  persistTabs()
-}
-
-function applyTheme(theme: string): void {
-  document.documentElement.setAttribute('data-theme', theme)
-}
-
 onMounted(async () => {
-  loadSavedConnections()
-  await loadSettings()
-  // 应用保存的语言设置
-  locale.value = state.settings.locale || 'zh-CN'
-  // 应用保存的主题
-  applyTheme(state.settings.theme || 'mocha')
-  // 应用保存的缩放
-  try {
-    window.api.setZoomFactor(state.settings.zoom)
-  } catch (e) {
-    console.error('[app] setZoomFactor failed:', e)
+  await initApp()
+  if (settingsStore.savedTransfers.value.length > 0) {
+    restoreQueue(settingsStore.savedTransfers.value)
   }
-  if (state.settings.reopenTabs) {
-    const restore = [...savedTabs]
-    for (const tab of restore) {
-      addTab(tab.config, tab.name)
-    }
-  }
-  // 持久监听断开事件，更新标签连接状态
   disconnectCleanup.value = window.api.onDisconnect((e) => {
     const tab = connectionStore.tabs.value.find((t) => t.id === e.id)
     if (tab) {
@@ -303,6 +285,12 @@ onMounted(async () => {
       tab.ftpConnected = false
     }
   })
+  transferCleanups.push(
+    window.api.onTransferProgress((data) => addOrUpdate(data)),
+    window.api.onTransferComplete((data) => markComplete(data.id, data.localPath)),
+    window.api.onTransferError((data) => markError(data.id, data.error)),
+    window.api.onTransferCancelled((data) => markCancelled(data.id))
+  )
   window.addEventListener('resize', onResize)
   window.addEventListener('beforeunload', onBeforeUnload)
 })
@@ -310,19 +298,18 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   window.removeEventListener('beforeunload', onBeforeUnload)
-  if (resizeTimer) clearTimeout(resizeTimer)
+  resizeCleanup()
   disconnectCleanup.value?.()
+  transferCleanups.forEach((fn) => fn())
 })
 
-// 切换主题
 watch(
-  () => state.settings.theme,
+  () => settingsStore.theme.value,
   (val) => {
     if (val) applyTheme(val)
   }
 )
 
-// 切换标签时自动聚焦终端
 watch(activeTabId, (id) => {
   if (!id) return
   nextTick(() => sessionRefs.value[id]?.focusAndFit())
@@ -375,49 +362,21 @@ async function reconnectTab(tabId: string): Promise<void> {
   }
   tab.loading = false
 }
-
-/** 窗口尺寸提示 */
-const windowSize = ref({ w: window.innerWidth, h: window.innerHeight })
-const showSize = ref(false)
-let resizeTimer: ReturnType<typeof setTimeout> | null = null
-const onResize = (): void => {
-  windowSize.value = { w: window.innerWidth, h: window.innerHeight }
-  showSize.value = true
-  if (resizeTimer) clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(() => {
-    showSize.value = false
-  }, 500)
-}
-
-/** 缩放预览（拖拽时浮动浮窗） */
-const previewZoom = ref<number | null>(null)
-const appTransform = computed(() => {
-  if (previewZoom.value === null) return {}
-  const current = state.settings.zoom || 1
-  const ratio = previewZoom.value / current
-  return {
-    transform: `scale(${ratio})`,
-    'transform-origin': 'top left',
-    overflow: 'visible'
-  }
-})
-function onZoomDrag(factor: number): void {
-  previewZoom.value = factor
-}
-function onZoomApply(factor: number): void {
-  try {
-    window.api.setZoomFactor(factor)
-  } catch (e) {
-    console.error('[app] setZoomFactor failed:', e)
-  }
-  previewZoom.value = null
-}
 </script>
 
 <template>
-  <div class="app" :style="appTransform">
+  <div v-if="phase === 'loading'" class="init-screen">
+    <span class="init-spinner"></span>
+    <span class="init-text">{{ $t('app.loading') }}</span>
+  </div>
+  <div v-else-if="phase === 'error'" class="init-screen init-error">
+    <p class="init-error-title">{{ $t('app.initError') }}</p>
+    <p class="init-error-msg">{{ initError }}</p>
+    <button class="btn-primary" @click="initApp()">{{ $t('app.retry') }}</button>
+  </div>
+  <div v-else class="app" :style="appTransform">
     <!-- 标签栏：无系统标题栏时与标题栏合并 -->
-    <div v-if="!state.settings.useSystemTitleBar" class="frameless-top">
+    <div v-if="!useSystemTitleBar" class="frameless-top">
       <div class="top-left">
         <span class="app-logo">{{ $t('app.logo') }}</span>
       </div>
@@ -439,12 +398,12 @@ function onZoomApply(factor: number): void {
                 if ((e as MouseEvent).button === 1) handleCloseTab(tab.id)
               }
             "
-            @contextmenu.prevent="onTabContextMenu($event, tab.id)"
+            @contextmenu.prevent="openContextMenu($event, tab.id)"
             @wheel.prevent="onTabWheel"
             @dragstart="onDragStart(index)"
             @dragover.prevent="onDragOver(index)"
             @dragleave="onDragLeave"
-            @drop="onDrop(index)"
+            @drop="doDrop(index, moveTab, persistTabs)"
             @dragend="onDragEnd"
           >
             <span
@@ -454,9 +413,8 @@ function onZoomApply(factor: number): void {
               >{{ tab.name }}</span
             >
             <button
-              v-if="!tab.connected"
+              v-if="!tab.connected && !tab.loading"
               class="tab-refresh"
-              :class="{ spinning: tab.loading }"
               :title="$t('app.subtab.reconnect')"
               @click.stop="reconnectTab(tab.id)"
             >
@@ -467,17 +425,17 @@ function onZoomApply(factor: number): void {
         </div>
         <div class="titlebar-controls">
           <button class="titlebar-btn" :title="$t('app.titlebar.minimize')" @click="minimizeWindow">
-            &#x2014;
+            &#x25AC;
           </button>
           <button class="titlebar-btn" :title="$t('app.titlebar.maximize')" @click="maximizeWindow">
-            &#x25A1;
+            &#x2752;
           </button>
           <button
             class="titlebar-btn titlebar-close"
             :title="$t('app.titlebar.close')"
             @click="closeWindow"
           >
-            &times;
+            &#x2716;
           </button>
         </div>
       </div>
@@ -500,20 +458,19 @@ function onZoomApply(factor: number): void {
               if ((e as MouseEvent).button === 1) handleCloseTab(tab.id)
             }
           "
-          @contextmenu.prevent="onTabContextMenu($event, tab.id)"
+          @contextmenu.prevent="openContextMenu($event, tab.id)"
           @dragstart="onDragStart(index)"
           @dragover.prevent="onDragOver(index)"
           @dragleave="onDragLeave"
-          @drop="onDrop(index)"
+          @drop="doDrop(index, moveTab, persistTabs)"
           @dragend="onDragEnd"
         >
           <span class="tab-name" :style="{ color: getTabColor(tab) }" :title="getTabTooltip(tab)">{{
             tab.name
           }}</span>
           <button
-            v-if="!tab.connected"
+            v-if="!tab.connected && !tab.loading"
             class="tab-refresh"
-            :class="{ spinning: tab.loading }"
             :title="$t('app.subtab.reconnect')"
             @click.stop="reconnectTab(tab.id)"
           >
@@ -541,6 +498,42 @@ function onZoomApply(factor: number): void {
         "
       >
         {{ $t('app.tabContextMenu.reload') }}
+      </div>
+      <div class="context-menu-separator"></div>
+      <div
+        class="context-menu-item"
+        @click="
+          () => {
+            if (!contextMenu) return
+            closeTabsToLeft(contextMenu.tabId)
+            closeContextMenu()
+          }
+        "
+      >
+        {{ $t('app.tabContextMenu.closeLeft') }}
+      </div>
+      <div
+        class="context-menu-item"
+        @click="
+          () => {
+            if (!contextMenu) return
+            closeTabsToRight(contextMenu.tabId)
+            closeContextMenu()
+          }
+        "
+      >
+        {{ $t('app.tabContextMenu.closeRight') }}
+      </div>
+      <div
+        class="context-menu-item"
+        @click="
+          () => {
+            closeAllTabs()
+            closeContextMenu()
+          }
+        "
+      >
+        {{ $t('app.tabContextMenu.closeAll') }}
       </div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item context-menu-close" @click="closeContextMenu()">
@@ -600,6 +593,38 @@ function onZoomApply(factor: number): void {
             {{ $t('app.subtab.ftp') }}
           </button>
         </div>
+        <div v-if="activeTab && activeTab.loading && !activeTab.connected" class="status-bar">
+          <span class="spinner"></span>
+          {{
+            $t('sshSession.connecting', {
+              host: activeTab.config.host,
+              port: activeTab.config.port
+            })
+          }}
+        </div>
+        <div v-else-if="activeTab && activeTab.error" class="status-bar error">
+          {{ $t('sshSession.connectionFailed', { msg: activeTab.error }) }}
+          <button
+            class="status-reconnect"
+            :title="$t('app.subtab.reconnect')"
+            @click="reconnectTab(activeTab.id)"
+          >
+            ↻
+          </button>
+        </div>
+        <div
+          v-else-if="activeTab && !activeTab.connected && !activeTab.loading"
+          class="status-bar disconnected"
+        >
+          {{ $t('sshSession.connectionClosed') }}
+          <button
+            class="status-reconnect"
+            :title="$t('app.subtab.reconnect')"
+            @click="reconnectTab(activeTab.id)"
+          >
+            ↻
+          </button>
+        </div>
         <div class="content">
           <div v-if="tabs.length === 0" class="welcome">
             <div class="welcome-content">
@@ -630,6 +655,8 @@ function onZoomApply(factor: number): void {
               :initial-path="ftpCache[tab.id]?.path"
               :initial-entries="ftpCache[tab.id]?.entries"
               @loaded="(data) => (ftpCache[tab.id] = data)"
+              @download-start="(x, y, filename) => onDownloadStart(x, y, filename)"
+              @show-queue="onShowQueue"
             />
           </div>
         </div>
@@ -649,11 +676,22 @@ function onZoomApply(factor: number): void {
       @zoom-apply="onZoomApply"
     />
     <AboutDialog v-if="showAbout" @close="showAbout = false" />
+    <CloseConfirmDialog v-if="pendingClose" @confirm="confirmClose" @cancel="cancelClose" />
     <transition name="fade">
       <div v-if="showSize" class="resize-overlay">
         {{ windowSize.w }} &times; {{ windowSize.h }}
       </div>
     </transition>
+    <Teleport to="body">
+      <span
+        v-for="p in flyParticles"
+        :id="'fly-' + p.id"
+        :key="p.id"
+        class="fly-particle"
+        :style="{ left: p.x + 'px', top: p.y + 'px' }"
+        >{{ p.filename }}</span
+      >
+    </Teleport>
   </div>
 </template>
 
@@ -943,12 +981,6 @@ body,
   color: var(--accent);
 }
 
-.tab-refresh.spinning {
-  animation: spin 1s linear infinite;
-  cursor: default;
-  color: var(--accent);
-}
-
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -978,6 +1010,54 @@ body,
 .content {
   flex: 1;
   overflow: hidden;
+}
+
+.status-bar {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.status-bar.error {
+  background: color-mix(in srgb, var(--bg-base), var(--danger) 12%);
+  color: var(--danger);
+}
+
+.status-bar.disconnected {
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.status-reconnect {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.status-reconnect:hover {
+  background: var(--bg-overlay);
+  color: var(--accent);
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--bg-overlay);
+  border-top: 2px solid var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
 }
 
 .session-wrapper {
@@ -1037,6 +1117,47 @@ body,
   white-space: nowrap;
 }
 
+.init-screen {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--bg-base);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.init-error-title {
+  color: var(--danger);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.init-error-msg {
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 400px;
+  text-align: center;
+  word-break: break-all;
+}
+
+.init-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--bg-overlay);
+  border-top: 2px solid var(--accent);
+  border-radius: 50%;
+  animation: init-spin 0.8s linear infinite;
+}
+
+@keyframes init-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s;
@@ -1045,5 +1166,16 @@ body,
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.fly-particle {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--accent);
+  white-space: nowrap;
+  will-change: transform, opacity;
 }
 </style>
