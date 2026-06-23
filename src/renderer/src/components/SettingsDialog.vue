@@ -36,19 +36,30 @@ const {
   setAskDownloadLocation,
   showQueueOnDownload,
   setShowQueueOnDownload,
+  downloadMode,
+  setDownloadMode,
+  opacity: storeOpacity,
+  setOpacity,
   flush
 } = useSettingsStore()
-const { locale } = useI18n()
+const { locale: $locale, t: $t } = useI18n()
 
 // 使用本地 ref 确保滑块与显示值实时响应
 const fontSize = ref(storeFontSize.value)
 const zoom = ref(Math.round(storeZoom.value * 100))
+const opacity = ref(Math.round(storeOpacity.value))
 const sliderDragging = ref(false)
 const systemDownloadsPath = ref('')
 const editingDefaultPath = ref(false)
 
 const isDefaultDownloadPath = computed(
   () => !defaultDownloadPath.value || defaultDownloadPath.value === systemDownloadsPath.value
+)
+
+const downloadModeHint = computed(() =>
+  downloadMode.value === 'stream'
+    ? $t('settingsDialog.transfer.downloadModeStreamHint')
+    : $t('settingsDialog.transfer.downloadModeChunkHint')
 )
 
 onMounted(async () => {
@@ -72,6 +83,12 @@ watch(
     zoom.value = Math.round(val * 100)
   }
 )
+watch(
+  () => storeOpacity.value,
+  (val) => {
+    opacity.value = Math.round(val)
+  }
+)
 
 async function close(): Promise<void> {
   await flush()
@@ -80,7 +97,7 @@ async function close(): Promise<void> {
 }
 
 function onLocaleChange(val: string): void {
-  locale.value = val
+  $locale.value = val
   setLocale(val)
 }
 
@@ -115,6 +132,32 @@ function onZoomRelease(): void {
   const factor = zoom.value / 100
   setZoom(factor)
   emit('zoomApply', factor)
+}
+
+function onOpacityChange(delta: number): void {
+  const v = Math.max(0, Math.min(100, opacity.value + delta))
+  opacity.value = v
+  const factor = Math.round(v) / 100
+  setOpacity(Math.round(v))
+  try {
+    window.api.setWindowOpacity(factor)
+  } catch (e) {
+    console.error('[settings] setWindowOpacity failed:', e)
+  }
+}
+
+function onOpacityDrag(): void {
+  const factor = opacity.value / 100
+  try {
+    window.api.setWindowOpacity(factor)
+  } catch (e) {
+    console.error('[settings] setWindowOpacity failed:', e)
+  }
+}
+
+function onOpacityRelease(): void {
+  const val = opacity.value
+  setOpacity(val)
 }
 
 function resetToDefault(): void {
@@ -240,6 +283,22 @@ async function browseDownloadPath(): Promise<void> {
               <button class="step-btn" @click="onZoomChange(-0.1)">−</button>
               <button class="step-btn" @click="onZoomChange(0.1)">+</button>
             </div>
+            <div class="setting-row">
+              <label class="setting-label">{{ $t('settingsDialog.display.opacity') }}</label>
+              <input
+                v-model.number="opacity"
+                type="range"
+                class="setting-slider"
+                min="0"
+                max="100"
+                step="1"
+                @input="onOpacityDrag()"
+                @change="onOpacityRelease()"
+              />
+              <span class="setting-value">{{ opacity }}%</span>
+              <button class="step-btn" @click="onOpacityChange(-1)">−</button>
+              <button class="step-btn" @click="onOpacityChange(1)">+</button>
+            </div>
           </div>
           <!-- 终端 -->
           <div v-if="activeTab === 'terminal'" class="tab-content">
@@ -313,6 +372,24 @@ async function browseDownloadPath(): Promise<void> {
               />
               <span>{{ $t('settingsDialog.transfer.showQueueOnDownload') }}</span>
             </label>
+            <div class="setting-row">
+              <label class="setting-label">{{ $t('settingsDialog.transfer.downloadMode') }}</label>
+              <select
+                class="setting-select"
+                :value="downloadMode"
+                @change="
+                  setDownloadMode(($event.target as HTMLSelectElement).value as 'chunk' | 'stream')
+                "
+              >
+                <option value="chunk">
+                  {{ $t('settingsDialog.transfer.downloadModeChunk') }}
+                </option>
+                <option value="stream">
+                  {{ $t('settingsDialog.transfer.downloadModeStream') }}
+                </option>
+              </select>
+              <span class="setting-hint">{{ downloadModeHint }}</span>
+            </div>
           </div>
         </div>
         <div class="dialog-footer">
@@ -460,6 +537,11 @@ async function browseDownloadPath(): Promise<void> {
 
 .setting-select:focus {
   border-color: var(--accent);
+}
+
+.setting-hint {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .setting-slider {

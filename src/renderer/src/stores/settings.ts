@@ -18,11 +18,16 @@ const defaults: AppSettings = {
   theme: 'mocha',
   windowWidth: 900,
   windowHeight: 670,
+  windowX: null,
+  windowY: null,
+  windowMaximized: false,
   defaultDownloadPath: '',
   askDownloadLocation: true,
   showQueueOnDownload: false,
   sessionsPinned: false,
-  queuePinned: false
+  queuePinned: false,
+  downloadMode: 'chunk' as 'chunk' | 'stream',
+  opacity: 100
 }
 
 const state = reactive({
@@ -75,11 +80,16 @@ export function useSettingsStore() {
       theme: state.theme,
       windowWidth: state.windowWidth,
       windowHeight: state.windowHeight,
+      windowX: state.windowX,
+      windowY: state.windowY,
+      windowMaximized: state.windowMaximized,
       defaultDownloadPath: state.defaultDownloadPath,
       askDownloadLocation: state.askDownloadLocation,
       showQueueOnDownload: state.showQueueOnDownload,
       sessionsPinned: state.sessionsPinned,
-      queuePinned: state.queuePinned
+      queuePinned: state.queuePinned,
+      downloadMode: state.downloadMode,
+      opacity: state.opacity
     }
   }
 
@@ -131,6 +141,14 @@ export function useSettingsStore() {
     state.queuePinned = val
   }
 
+  function setDownloadMode(val: 'chunk' | 'stream'): void {
+    state.downloadMode = val
+  }
+
+  function setOpacity(val: number): void {
+    state.opacity = val
+  }
+
   async function flush(): Promise<void> {
     await save()
   }
@@ -151,6 +169,8 @@ export function useSettingsStore() {
     setShowQueueOnDownload,
     setSessionsPinned,
     setQueuePinned,
+    setDownloadMode,
+    setOpacity,
     flush
   }
 }

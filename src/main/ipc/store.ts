@@ -80,11 +80,16 @@ export function loadSettings(): SettingsData {
         theme: 'mocha',
         windowWidth: 900,
         windowHeight: 670,
+        windowX: null,
+        windowY: null,
+        windowMaximized: false,
         defaultDownloadPath: '',
         askDownloadLocation: true,
         showQueueOnDownload: false,
         sessionsPinned: false,
-        queuePinned: false
+        queuePinned: false,
+        downloadMode: 'chunk' as const,
+        opacity: 100
       },
       tabs: []
     }
@@ -111,11 +116,16 @@ export function loadSettingsData(): AppSettings {
       theme: 'mocha',
       windowWidth: 900,
       windowHeight: 670,
+      windowX: null,
+      windowY: null,
+      windowMaximized: false,
       defaultDownloadPath: '',
       askDownloadLocation: true,
       showQueueOnDownload: false,
       sessionsPinned: false,
-      queuePinned: false
+      queuePinned: false,
+      downloadMode: 'chunk' as const,
+      opacity: 100
     }
   }
 }

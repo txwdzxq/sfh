@@ -143,11 +143,21 @@ const sshApi = {
     return () => ipcRenderer.removeListener(IPC.TRANSFER_PROGRESS, handler)
   },
   onTransferComplete: (
-    callback: (data: { id: string; localPath?: string }) => void
+    callback: (data: {
+      id: string
+      localPath?: string
+      transferred?: number
+      total?: number
+    }) => void
   ): (() => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
-      data: { id: string; localPath?: string }
+      data: {
+        id: string
+        localPath?: string
+        transferred?: number
+        total?: number
+      }
     ): void => callback(data)
     ipcRenderer.on(IPC.TRANSFER_COMPLETE, handler)
     return () => ipcRenderer.removeListener(IPC.TRANSFER_COMPLETE, handler)
@@ -166,7 +176,8 @@ const sshApi = {
     return () => ipcRenderer.removeListener(IPC.TRANSFER_DRAG_READY, handler)
   },
   onTransferCancelled: (callback: (data: { id: string }) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { id: string }): void => callback(data)
+    const handler = (_event: Electron.IpcRendererEvent, data: { id: string }): void =>
+      callback(data)
     ipcRenderer.on(IPC.TRANSFER_CANCELLED, handler)
     return () => ipcRenderer.removeListener(IPC.TRANSFER_CANCELLED, handler)
   },
@@ -189,10 +200,19 @@ const sshApi = {
   getPosition: (): Promise<[number, number]> => ipcRenderer.invoke(IPC.WINDOW_GET_POSITION),
   setPosition: (x: number, y: number): Promise<void> =>
     ipcRenderer.invoke(IPC.WINDOW_SET_POSITION, x, y),
+  setWindowOpacity: (factor: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.WINDOW_SET_OPACITY, factor),
   showItemInFolder: (localPath: string): Promise<void> =>
     ipcRenderer.invoke(IPC.SHELL_SHOW_ITEM, localPath),
   pauseTransfer: (tid: string): void => ipcRenderer.send(IPC.TRANSFER_PAUSE, tid),
-  resumeTransfer: (tid: string, tabId?: string, remotePath?: string, localPath?: string, offset?: number, connectionKey?: string): void =>
+  resumeTransfer: (
+    tid: string,
+    tabId?: string,
+    remotePath?: string,
+    localPath?: string,
+    offset?: number,
+    connectionKey?: string
+  ): void =>
     ipcRenderer.send(IPC.TRANSFER_RESUME, tid, tabId, remotePath, localPath, offset, connectionKey),
   cancelTransfer: (tid: string): void => ipcRenderer.send(IPC.TRANSFER_CANCEL, tid),
   cancelAllTransfers: (): void => ipcRenderer.send(IPC.TRANSFER_CANCEL_ALL)

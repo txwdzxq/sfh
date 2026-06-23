@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import { SFTPWrapper } from 'ssh2'
 import { SSHShellManager } from './shell.manager'
 import { SftpEntry } from './types'
+import { ParallelReadStream } from './parallel-read-stream'
 
 const CHUNK_SIZE = 256 * 1024
 const CONCURRENCY = 16
@@ -16,10 +17,15 @@ interface ChunkInfo {
 interface ControlledTransfer {
   sftp: SFTPWrapper
   handle: Buffer
-  readStream?: NodeJS.ReadableStream & { pause(): NodeJS.ReadableStream; resume(): NodeJS.ReadableStream; destroy(): void }
+  readStream?: NodeJS.ReadableStream & {
+    pause(): NodeJS.ReadableStream
+    resume(): NodeJS.ReadableStream
+    destroy(): void
+  }
   writeStream?: NodeJS.WritableStream & { destroy(): void }
   paused: boolean
   chunks?: ChunkInfo[]
+  nextChunkIdx?: number
   localFd?: number
   total?: number
   transferred?: number
@@ -135,11 +141,14 @@ export class SFTPManager {
   ): Promise<void> {
     const sftp = await this.getSftp(id)
     const fs = require('fs') as typeof import('fs')
+
     return new Promise((resolve, reject) => {
       const stat = fs.statSync(localPath)
       const total = stat.size
+      const normalizedRemotePath = remotePath.normalize('NFC')
+
       const readStream = fs.createReadStream(localPath)
-      const writeStream = sftp.createWriteStream(remotePath)
+      const writeStream = sftp.createWriteStream(normalizedRemotePath, { flags: 'w', mode: 0o644 })
       let transferred = 0
       const handle = Buffer.alloc(0)
 
@@ -151,30 +160,61 @@ export class SFTPManager {
         paused: false
       })
 
-      readStream.on('data', (chunk: string | Buffer) => {
-        transferred += Buffer.byteLength(chunk)
-        onProgress?.(transferred, total)
-      })
+      console.log(`[sftp] Starting upload: ${localPath} → ${normalizedRemotePath}`)
 
-      const cleanup = (): void => {
-        this.controlledTransfers.delete(transferId)
+      // 进度节流：每 200ms 最多回调一次，避免 IPC 消息风暴
+      let lastProgressTime = 0
+      let pendingTransferred = 0
+      let progressTimer: ReturnType<typeof setTimeout> | null = null
+
+      const throttledProgress = (transferred: number, total: number): void => {
+        const now = Date.now()
+        pendingTransferred = transferred
+        if (now - lastProgressTime >= 200) {
+          lastProgressTime = now
+          onProgress?.(transferred, total)
+        } else if (!progressTimer) {
+          progressTimer = setTimeout(() => {
+            progressTimer = null
+            lastProgressTime = Date.now()
+            onProgress?.(pendingTransferred, total)
+          }, 200)
+        }
       }
 
-      writeStream.on('finish', () => {
-        cleanup()
+      readStream.on('data', (chunk: string | Buffer) => {
+        transferred += Buffer.byteLength(chunk)
+        throttledProgress(transferred, total)
+      })
+
+      let settled = false
+      const onDone = (): void => {
+        if (settled) return
+        settled = true
+        if (progressTimer) clearTimeout(progressTimer)
+        onProgress?.(total, total)
+        readStream.unpipe?.(writeStream)
+        readStream.destroy()
+        this.controlledTransfers.delete(transferId)
         resolve()
+      }
+
+      readStream.on('error', (err) => {
+        console.error(`[sftp] ReadStream error:`, err)
+        if (progressTimer) clearTimeout(progressTimer)
+        settled = true
+        reject(err)
       })
 
-      writeStream.on('error', (e) => {
-        cleanup()
-        reject(e)
+      writeStream.on('error', (err) => {
+        console.error(`[sftp] WriteStream error:`, err)
+        if (progressTimer) clearTimeout(progressTimer)
+        settled = true
+        reject(err)
       })
 
-      readStream.on('error', (e) => {
-        cleanup()
-        writeStream.destroy()
-        reject(e)
-      })
+      writeStream.on('finish', () => onDone())
+      writeStream.on('close', () => onDone())
 
       readStream.pipe(writeStream)
     })
@@ -202,6 +242,67 @@ export class SFTPManager {
     })
   }
 
+  async downloadStreamed(
+    id: string,
+    remotePath: string,
+    localPath: string,
+    transferId: string,
+    onProgress?: (t: number, total: number) => void
+  ): Promise<void> {
+    const sftp = await this.getSftp(id)
+    return new Promise<void>((resolve, reject) => {
+      sftp.open(remotePath, 'r', 0o644, (err, handle) => {
+        if (err) return reject(err)
+        sftp.fstat(handle, (err, stat) => {
+          if (err) {
+            sftp.close(handle, () => {})
+            return reject(err)
+          }
+
+          const total = stat.size
+          const readStream = new ParallelReadStream(sftp, handle, total, onProgress)
+          const writeStream = fs.createWriteStream(localPath)
+
+          this.controlledTransfers.set(transferId, {
+            sftp,
+            handle,
+            readStream,
+            writeStream,
+            paused: false
+          })
+
+          let settled = false
+
+          writeStream.on('finish', () => {
+            if (settled) return
+            settled = true
+            onProgress?.(total, total)
+            this.controlledTransfers.delete(transferId)
+            resolve()
+          })
+
+          readStream.on('error', (e) => {
+            if (settled) return
+            settled = true
+            this.controlledTransfers.delete(transferId)
+            writeStream.destroy()
+            reject(e)
+          })
+
+          writeStream.on('error', (e) => {
+            if (settled) return
+            settled = true
+            this.controlledTransfers.delete(transferId)
+            readStream.destroy()
+            reject(e)
+          })
+
+          readStream.pipe(writeStream)
+        })
+      })
+    })
+  }
+
   async downloadControlled(
     id: string,
     remotePath: string,
@@ -226,37 +327,63 @@ export class SFTPManager {
           const localFd = fs.openSync(localPath, offset > 0 ? 'r+' : 'w')
           let transferred = offset
           let activeCount = 0
-          let cancelled = false
-          let paused = false
+          const cancelled = false
+          const paused = false
           let completed = false
+
+          // 进度节流：每 500ms 最多回调一次，避免 IPC 消息风暴
+          let lastProgressTime = 0
+          let pendingTransferred = 0
+          let progressTimer: ReturnType<typeof setTimeout> | null = null
 
           const firstChunkIdx = Math.floor(offset / CHUNK_SIZE)
           const chunks: ChunkInfo[] = []
           for (let i = firstChunkIdx; i * CHUNK_SIZE < total; i++) {
             const start = i * CHUNK_SIZE
-            chunks.push({ start, end: Math.min(start + CHUNK_SIZE - 1, total - 1), done: false, active: false })
+            chunks.push({
+              start,
+              end: Math.min(start + CHUNK_SIZE - 1, total - 1),
+              done: false,
+              active: false
+            })
           }
 
           const transfer: ControlledTransfer = {
-            sftp, handle, paused: false,
-            chunks, localFd, total, transferred, activeCount,
-            cancelled: false, resolve, reject, onProgress
+            sftp,
+            handle,
+            paused: false,
+            chunks,
+            nextChunkIdx: 0,
+            localFd,
+            total,
+            transferred,
+            activeCount,
+            cancelled: false,
+            resolve,
+            reject,
+            onProgress
           }
           self.controlledTransfers.set(transferId, transfer)
 
           const cleanup = (): void => {
+            if (progressTimer) {
+              clearTimeout(progressTimer)
+              progressTimer = null
+            }
             self.controlledTransfers.delete(transferId)
-            try { fs.closeSync(localFd) } catch {}
+            try {
+              fs.closeSync(localFd)
+            } catch {}
             sftp.close(handle, () => {})
           }
 
           const tryProcessNext = (): void => {
             if (cancelled || paused || completed) return
 
-            while (activeCount < CONCURRENCY) {
-              const chunk = chunks.find((c) => !c.done && !c.active)
-              if (!chunk) break
-
+            while (activeCount < CONCURRENCY && (transfer.nextChunkIdx ?? 0) < chunks.length) {
+              const idx = transfer.nextChunkIdx!
+              const chunk = chunks[idx]
+              transfer.nextChunkIdx = idx + 1
               chunk.active = true
               activeCount++
               transfer.activeCount = activeCount
@@ -282,8 +409,20 @@ export class SFTPManager {
                     activeCount--
                     transfer.activeCount = activeCount
                     transferred += bytesRead
+                    pendingTransferred = transferred
                     transfer.transferred = transferred
-                    onProgress?.(transferred, total)
+
+                    const now = Date.now()
+                    if (now - lastProgressTime >= 500) {
+                      lastProgressTime = now
+                      onProgress?.(transferred, total)
+                    } else if (!progressTimer) {
+                      progressTimer = setTimeout(() => {
+                        progressTimer = null
+                        lastProgressTime = Date.now()
+                        onProgress?.(pendingTransferred, total)
+                      }, 500)
+                    }
 
                     if (!completed) tryProcessNext()
                   })
@@ -299,6 +438,11 @@ export class SFTPManager {
 
             if (chunks.every((c) => c.done) && !completed) {
               completed = true
+              if (progressTimer) {
+                clearTimeout(progressTimer)
+                progressTimer = null
+              }
+              onProgress?.(total, total)
               cleanup()
               resolve()
             }
@@ -329,6 +473,17 @@ export class SFTPManager {
       t.paused = false
       const self = this
       const transfer = t
+      // 确保 nextChunkIdx 已计算（兼容暂停前的旧数据）
+      if (transfer.nextChunkIdx == null) {
+        const chunks = transfer.chunks!
+        transfer.nextChunkIdx = chunks.findIndex((c) => !c.done)
+        if (transfer.nextChunkIdx < 0) transfer.nextChunkIdx = chunks.length
+      }
+      // 进度节流
+      let lastProgressTime = 0
+      let pendingTransferred = 0
+      let progressTimer: ReturnType<typeof setTimeout> | null = null
+
       const tryProcessNext = (): void => {
         if (transfer.cancelled || transfer.paused) return
         const chunks = transfer.chunks!
@@ -337,14 +492,13 @@ export class SFTPManager {
         const localFd = transfer.localFd!
         const total = transfer.total!
         const onProgress = transfer.onProgress
-        const concurrency = 16
         let activeCount = transfer.activeCount || 0
         let completed = false
 
-        while (activeCount < concurrency) {
-          const chunk = chunks.find((c: ChunkInfo) => !c.done && !c.active)
-          if (!chunk) break
-
+        while (activeCount < CONCURRENCY && (transfer.nextChunkIdx ?? 0) < chunks.length) {
+          const idx = transfer.nextChunkIdx!
+          const chunk = chunks[idx]
+          transfer.nextChunkIdx = idx + 1
           chunk.active = true
           activeCount++
           transfer.activeCount = activeCount
@@ -353,7 +507,10 @@ export class SFTPManager {
           sftp.read(handle, buf, 0, buf.length, chunk.start, (err, bytesRead) => {
             if (transfer.cancelled) return
             if (err) {
-              try { fs.closeSync(localFd) } catch {}
+              if (progressTimer) clearTimeout(progressTimer)
+              try {
+                fs.closeSync(localFd)
+              } catch {}
               sftp.close(handle, () => {})
               self.controlledTransfers.delete(tid)
               transfer.reject?.(err)
@@ -364,7 +521,10 @@ export class SFTPManager {
               fs.write(localFd, buf, 0, bytesRead, chunk.start, (err) => {
                 if (transfer.cancelled) return
                 if (err) {
-                  try { fs.closeSync(localFd) } catch {}
+                  if (progressTimer) clearTimeout(progressTimer)
+                  try {
+                    fs.closeSync(localFd)
+                  } catch {}
                   sftp.close(handle, () => {})
                   self.controlledTransfers.delete(tid)
                   transfer.reject?.(err)
@@ -376,7 +536,19 @@ export class SFTPManager {
                 activeCount--
                 transfer.activeCount = activeCount
                 transfer.transferred = (transfer.transferred || 0) + bytesRead
-                onProgress?.(transfer.transferred, total)
+                pendingTransferred = transfer.transferred
+
+                const now = Date.now()
+                if (now - lastProgressTime >= 500) {
+                  lastProgressTime = now
+                  onProgress?.(transfer.transferred, total)
+                } else if (!progressTimer) {
+                  progressTimer = setTimeout(() => {
+                    progressTimer = null
+                    lastProgressTime = Date.now()
+                    onProgress?.(pendingTransferred, total)
+                  }, 500)
+                }
 
                 if (!completed) tryProcessNext()
               })
@@ -392,7 +564,10 @@ export class SFTPManager {
 
         if (chunks.every((c: ChunkInfo) => c.done)) {
           completed = true
-          try { fs.closeSync(localFd) } catch {}
+          if (progressTimer) clearTimeout(progressTimer)
+          try {
+            fs.closeSync(localFd)
+          } catch {}
           sftp.close(handle, () => {})
           self.controlledTransfers.delete(tid)
           transfer.resolve?.()
@@ -412,7 +587,9 @@ export class SFTPManager {
     if (t.chunks) {
       t.cancelled = true
       if (t.localFd !== undefined) {
-        try { fs.closeSync(t.localFd) } catch {}
+        try {
+          fs.closeSync(t.localFd)
+        } catch {}
       }
       t.sftp.close(t.handle, () => {})
       this.controlledTransfers.delete(tid)
@@ -434,7 +611,9 @@ export class SFTPManager {
       if (t.chunks) {
         t.cancelled = true
         if (t.localFd !== undefined) {
-          try { fs.closeSync(t.localFd) } catch {}
+          try {
+            fs.closeSync(t.localFd)
+          } catch {}
         }
       } else {
         t.readStream?.destroy()
@@ -454,7 +633,9 @@ export class SFTPManager {
       if (t.sftp === sftp) {
         t.cancelled = true
         if (t.chunks && t.localFd !== undefined) {
-          try { fs.closeSync(t.localFd) } catch {}
+          try {
+            fs.closeSync(t.localFd)
+          } catch {}
         } else {
           t.readStream?.destroy()
           t.writeStream?.destroy()

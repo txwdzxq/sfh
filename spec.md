@@ -59,6 +59,7 @@
 - Keyboard input → IPC → SSH shell write
 - Shell output → IPC → terminal write
 - Terminal resize → IPC → PTY resize (debounced 200ms)
+- SSH resize grace period: 500ms after connection, resize buffered (not sent) to avoid zsh PROMPT_EOL_MARK `%` artifacts
 - Context menu: Copy (right-click on selection)
 
 ### 3.3 Status Indication
@@ -70,7 +71,7 @@
 ## 4. Local Input Mode
 
 ### 4.1 Input Bar
-- Textarea below terminal, visible when connected
+- Textarea below terminal, visible when connected (component: `LocalInputBar.vue`)
 - Enter sends command, Shift+Enter for newline
 - ↑↓ navigate command history (per-session, max 500 entries)
 - Auto-expanding textarea (max 200px, then scroll)
@@ -120,16 +121,22 @@
 ## 6. Window & UI
 
 ### 6.1 Titlebar
-- Custom frameless titlebar (default):
+- Custom frameless titlebar (default, component: `TabBar.vue`):
   - Logo + tabs in unified bar
   - `-webkit-app-region: drag` on titlebar → native OS window snap
   - Minimize / Maximize / Close buttons with IPC
 - System titlebar option (Settings, restart required)
+- Right-click context menu on tabs (component: `TabContextMenu.vue`): Reload, Close Left/Right, Close All
 
 ### 6.2 Window State
-- Window size saved on resize (debounced 500ms) and on close
-- Window size restored on startup (min 800×500)
+- Window size saved on resize (debounced 500ms, only normal/unmaximized size)
+- Window position and maximized state saved on close (not on resize to avoid churn)
+- Window state restored on startup: normal size, position, and maximized flag
+- Normal (unmaximized) size preserved across sessions even if window was closed while maximized
+- Race condition guard: `close` handler clears resize debounce timer to prevent stale overlay; `closed` event sets `mainWindow = null`
+- **No `beforeunload` persistence**: window state writes exclusively from main process to avoid renderer IPC queue overwriting correct data
 - Resize overlay: centered `W × H` shown briefly on resize, fades after 500ms
+- **Flex 高度约束链**：`.main-area` 和 `.main-vertical` 必须设置 `min-height: 0`；`.content` 和 `.session-wrapper` 必须设置 `display: flex; flex-direction: column; min-height: 0`，否则窗口缩小时终端内容会被 `overflow: hidden` 裁剪且不产生滚动条
 
 ### 6.3 Sidebar
 - Vertical toolbar with icon buttons:
@@ -170,9 +177,13 @@
 - Pause: set flag, active chunks finish, no new chunks dispatched
 - Resume: clear flag, re-enter chunk dispatch loop for pending chunks
 - Cancel: set flag, close fd + handle, delete from transfer map
+- **100% progress guarantee**: `onProgress(total, total)` called before `resolve()` in `downloadControlled` and `downloadStreamed` to ensure final progress event reaches 100% regardless of throttling state
 
 #### 6.5.2 Upload Engine
 - Streamed upload: `fs.createReadStream().pipe(sftp.createWriteStream())`
+- Progress throttled at 200ms intervals via `throttledProgress` to reduce IPC message frequency
+- **100% progress guarantee**: `onProgress(total, total)` called before `resolve()` to ensure final progress reaches 100%
+- **WriteStream event**: must listen for both `finish` and `close` events (SSH2's `sftp.createWriteStream()` may not emit `finish`); uses `settled` flag to prevent duplicate resolve
 - Pause: `readStream.pause()` + flag
 - Resume: `readStream.resume()` + clear flag
 - Cancel: `readStream.destroy()` + `writeStream.destroy()` + close handle
@@ -187,6 +198,9 @@
 
 ### 7.2 Display Tab
 - Zoom (slider 1.0-3.0, step 0.1, apply on release)
+- Window opacity (slider 0-100, step 1, instant apply via IPC)
+  - Remap: `windowOpacity = 0.8 + sliderFactor × 0.2` (10%-100% window opacity)
+  - Persisted on release, restored on startup
 
 ### 7.3 Terminal Tab
 - Font size (slider 8-32, instant update)

@@ -18,6 +18,8 @@ function createWindow(frame: boolean): void {
   mainWindow = new BrowserWindow({
     width: w,
     height: h,
+    x: saved.windowX ?? undefined,
+    y: saved.windowY ?? undefined,
     show: false,
     frame,
     autoHideMenuBar: true,
@@ -28,12 +30,19 @@ function createWindow(frame: boolean): void {
     }
   })
 
-  // 窗口大小变化时保存（防抖）
+  if (saved.windowMaximized) {
+    mainWindow.maximize()
+  }
+
+  const rawFactor = (saved.opacity ?? 100) / 100
+  mainWindow.setOpacity(0.8 + Math.max(0, Math.min(1, rawFactor)) * 0.2)
+
+  // 窗口大小变化时保存正常（非最大化）尺寸（防抖）
   let resizeTimer: ReturnType<typeof setTimeout> | null = null
   mainWindow.on('resize', () => {
     if (resizeTimer) clearTimeout(resizeTimer)
     resizeTimer = setTimeout(() => {
-      if (!mainWindow) return
+      if (!mainWindow || mainWindow.isMaximized()) return
       const [cw, ch] = mainWindow.getSize()
       const data = loadSettings()
       data.settings.windowWidth = cw
@@ -43,12 +52,31 @@ function createWindow(frame: boolean): void {
   })
 
   mainWindow.on('close', () => {
+    // 清除 resize 防抖，避免其异步回调覆盖刚保存的数据
+    if (resizeTimer) {
+      clearTimeout(resizeTimer)
+      resizeTimer = null
+    }
     if (!mainWindow) return
-    const [cw, ch] = mainWindow.getSize()
+    const maximized = mainWindow.isMaximized()
     const data = loadSettings()
-    data.settings.windowWidth = cw
-    data.settings.windowHeight = ch
+    data.settings.windowMaximized = maximized
+    if (maximized) {
+      data.settings.windowX = null
+      data.settings.windowY = null
+    } else {
+      const [cw, ch] = mainWindow.getSize()
+      const [x, y] = mainWindow.getPosition()
+      data.settings.windowWidth = cw
+      data.settings.windowHeight = ch
+      data.settings.windowX = x
+      data.settings.windowY = y
+    }
     saveSettings(data)
+  })
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -104,6 +132,9 @@ app.whenReady().then(() => {
   ipcMain.handle(IPC.WINDOW_SET_POSITION, (_e, x: number, y: number) =>
     mainWindow?.setPosition(x, y)
   )
+  ipcMain.handle(IPC.WINDOW_SET_OPACITY, (_e, factor: number) => {
+    mainWindow?.setOpacity(0.8 + Math.max(0, Math.min(1, factor)) * 0.2)
+  })
 
   const settings = loadSettingsData()
   createWindow(settings.useSystemTitleBar ?? true)

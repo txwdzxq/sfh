@@ -39,7 +39,15 @@ export function useWindowControls(
     persistFn()
   }
 
-  return { minimizeWindow, maximizeWindow, closeWindow, confirmClose, cancelClose, pendingClose, onBeforeUnload }
+  return {
+    minimizeWindow,
+    maximizeWindow,
+    closeWindow,
+    confirmClose,
+    cancelClose,
+    pendingClose,
+    onBeforeUnload
+  }
 }
 
 import { ref } from 'vue'

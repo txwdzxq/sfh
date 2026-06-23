@@ -81,6 +81,22 @@ export class SshManager {
     return await this.sftpManager.download(id, remotePath, localPath, onProgress)
   }
 
+  async downloadStreamed(
+    id: string,
+    remotePath: string,
+    localPath: string,
+    transferId: string,
+    onProgress?: (t: number, total: number) => void
+  ): Promise<void> {
+    return await this.sftpManager.downloadStreamed(
+      id,
+      remotePath,
+      localPath,
+      transferId,
+      onProgress
+    )
+  }
+
   async downloadControlled(
     id: string,
     remotePath: string,
@@ -89,7 +105,14 @@ export class SshManager {
     onProgress?: (t: number, total: number) => void,
     startOffset?: number
   ): Promise<void> {
-    return await this.sftpManager.downloadControlled(id, remotePath, localPath, transferId, onProgress, startOffset)
+    return await this.sftpManager.downloadControlled(
+      id,
+      remotePath,
+      localPath,
+      transferId,
+      onProgress,
+      startOffset
+    )
   }
 
   pauseTransfer(tid: string): boolean {
@@ -111,7 +134,13 @@ export class SshManager {
     transferId: string,
     onProgress?: (t: number, total: number) => void
   ): Promise<void> {
-    return await this.sftpManager.uploadControlled(id, localPath, remotePath, transferId, onProgress)
+    return await this.sftpManager.uploadControlled(
+      id,
+      localPath,
+      remotePath,
+      transferId,
+      onProgress
+    )
   }
 
   cancelAllTransfers(): string[] {

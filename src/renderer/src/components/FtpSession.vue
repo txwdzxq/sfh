@@ -98,8 +98,12 @@ function formatTime(ts: number): string {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
 }
 
+// 请求序列号，用于 loadDir 竞态保护
+let loadSeq = 0
+
 /** 加载目录内容 */
 async function loadDir(path: string): Promise<void> {
+  const seq = ++loadSeq
   loading.value = true
   errorMsg.value = ''
   entries.value = []
@@ -123,9 +127,11 @@ async function loadDir(path: string): Promise<void> {
     if (tab) tab.ftpConnected = true
 
     const list = await sshService.readdir(props.tabId, targetPath)
+    if (seq !== loadSeq) return // 被更新的请求覆盖，丢弃结果
 
     // 读取成功后，更新路径为服务器真正返回的绝对路径，用于面包屑显示
     currentPath.value = await sshService.realpath(props.tabId, targetPath)
+    if (seq !== loadSeq) return // 被更新的请求覆盖，丢弃结果
 
     // 过滤掉 . 和 ..
     const filtered = list.filter((e) => e.filename !== '.' && e.filename !== '..')
@@ -406,7 +412,9 @@ function handleDocClick(): void {
           :class="{ active: isBookmarked }"
           :title="isBookmarked ? $t('ftpSession.bookmarked') : $t('ftpSession.bookmarkCurrent')"
           @click.stop="toggleBookmark"
-        >{{ isBookmarked ? '★' : '☆' }}</button>
+        >
+          {{ isBookmarked ? '★' : '☆' }}
+        </button>
       </div>
       <div class="bookmark-wrapper" @click.stop>
         <button
@@ -414,7 +422,9 @@ function handleDocClick(): void {
           :class="{ open: showBookmarks }"
           :title="$t('ftpSession.bookmarks')"
           @click.stop="toggleBookmarks"
-        >✪</button>
+        >
+          ✪
+        </button>
         <div v-if="showBookmarks" class="bookmark-dropdown">
           <div v-if="bookmarks.length === 0" class="bookmark-empty">
             {{ $t('ftpSession.noBookmarks') }}
@@ -430,7 +440,9 @@ function handleDocClick(): void {
               class="bookmark-remove"
               :title="$t('ftpSession.removeBookmark')"
               @click.stop="removeBookmark(bm.path, $event)"
-            >✕</button>
+            >
+              ✕
+            </button>
           </div>
         </div>
       </div>
@@ -620,6 +632,9 @@ function handleDocClick(): void {
   padding: 1px 4px;
   border-radius: 3px;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .crumb:hover {
@@ -677,6 +692,7 @@ function handleDocClick(): void {
 
 .bookmark-btn.star {
   margin-left: auto;
+  flex-shrink: 0;
   padding: 2px 4px;
   font-size: 14px;
 }
@@ -751,7 +767,9 @@ function handleDocClick(): void {
   padding: 0 4px;
   font-size: 12px;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
 }
 
 .bookmark-item:hover .bookmark-remove {

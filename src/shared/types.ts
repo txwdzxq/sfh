@@ -12,11 +12,16 @@ export interface AppSettings {
   theme: Theme
   windowWidth: number
   windowHeight: number
+  windowX: number | null
+  windowY: number | null
+  windowMaximized: boolean
   defaultDownloadPath: string
   askDownloadLocation: boolean
   showQueueOnDownload: boolean
   sessionsPinned: boolean
   queuePinned: boolean
+  downloadMode: 'chunk' | 'stream'
+  opacity: number
 }
 
 export interface SavedTab {
@@ -37,6 +42,7 @@ export interface TransferItemData {
   tabId?: string
   remotePath?: string
   connectionKey?: string
+  mode?: 'chunk' | 'stream'
 }
 
 export interface FtpBookmark {

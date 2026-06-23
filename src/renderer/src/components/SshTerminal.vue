@@ -54,6 +54,9 @@ let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let searchAddon: SearchAddon | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
+let markConnectedTimer: ReturnType<typeof setTimeout> | null = null
+let sshReady = false
+let pendingSshResize: { cols: number; rows: number } | null = null
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
 
@@ -131,18 +134,19 @@ function initTerminal(): void {
     sshService.write(props.tabId, data)
   })
 
-  // 终端 resize → IPC 通知 SSH PTY (添加防抖)
+  // 终端 resize → IPC 通知 SSH PTY (添加防抖，连接就绪前缓冲)
   terminal.onResize(({ cols, rows }) => {
+    if (!sshReady) {
+      pendingSshResize = { cols, rows }
+      return
+    }
     if (resizeTimer) clearTimeout(resizeTimer)
     resizeTimer = setTimeout(() => {
       sshService.resize(props.tabId, cols, rows)
     }, 200)
   })
 
-  // 只在可见时做初始 fit，隐藏标签等 focusAndFit 时再调
-  if (terminalRef.value.offsetParent !== null) {
-    fitTerminal()
-  }
+  // 初始 fit 延迟到 SshSession 连接成功后调用，避免 shell 未就绪时触发 resize 导致多出 %
 }
 
 function fitTerminal(): void {
@@ -189,6 +193,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (resizeTimer) clearTimeout(resizeTimer)
+  if (markConnectedTimer) clearTimeout(markConnectedTimer)
   cleanups.forEach((fn) => fn())
   terminal?.dispose()
   terminal = null
@@ -198,12 +203,26 @@ onUnmounted(() => {
 
 function focusAndFit(): void {
   requestAnimationFrame(() => {
-    fitAddon?.fit()
-    terminal?.focus()
+    requestAnimationFrame(() => {
+      void terminalRef.value?.offsetHeight
+      fitAddon?.fit()
+      terminal?.focus()
+    })
   })
 }
 
-defineExpose({ fitTerminal, terminal, focusAndFit })
+function markConnected(): void {
+  fitTerminal()
+  markConnectedTimer = setTimeout(() => {
+    sshReady = true
+    if (pendingSshResize) {
+      sshService.resize(props.tabId, pendingSshResize.cols, pendingSshResize.rows)
+      pendingSshResize = null
+    }
+  }, 500)
+}
+
+defineExpose({ fitTerminal, terminal, focusAndFit, markConnected })
 </script>
 
 <template>
@@ -225,6 +244,7 @@ defineExpose({ fitTerminal, terminal, focusAndFit })
   min-height: 0;
   background: var(--bg-base);
   position: relative;
+  padding: 5px;
 }
 
 .context-menu {

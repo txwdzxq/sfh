@@ -46,10 +46,24 @@ interface SshApi {
       connectionKey?: string
     }) => void
   ): () => void
-  onTransferComplete(callback: (data: { id: string; localPath?: string }) => void): () => void
+  onTransferComplete(
+    callback: (data: {
+      id: string
+      localPath?: string
+      transferred?: number
+      total?: number
+    }) => void
+  ): () => void
   showItemInFolder(path: string): Promise<void>
   pauseTransfer(tid: string): void
-  resumeTransfer(tid: string, tabId?: string, remotePath?: string, localPath?: string, offset?: number, connectionKey?: string): void
+  resumeTransfer(
+    tid: string,
+    tabId?: string,
+    remotePath?: string,
+    localPath?: string,
+    offset?: number,
+    connectionKey?: string
+  ): void
   cancelTransfer(tid: string): void
   cancelAllTransfers(): void
   onTransferError(callback: (data: { id: string; error: string }) => void): () => void
@@ -63,6 +77,7 @@ interface SshApi {
   setZoomFactor(factor: number): void
   getPosition(): Promise<[number, number]>
   setPosition(x: number, y: number): Promise<void>
+  setWindowOpacity(factor: number): Promise<void>
 }
 
 declare global {

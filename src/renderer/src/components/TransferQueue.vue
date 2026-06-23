@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useTransferStore, TransferItem } from '../stores/transfer'
+import { showToast } from '../utils/toast'
 
 const {
   items,
@@ -53,6 +54,7 @@ function openFolder(item: TransferItem): void {
 }
 
 function pauseTransfer(item: TransferItem): void {
+  if (item.mode === 'stream') return
   window.api.pauseTransfer(item.id)
   transferStore.markPaused(item.id)
 }
@@ -75,6 +77,7 @@ function cancelTransfer(item: TransferItem): void {
 
 function retryDownload(item: TransferItem): void {
   if (item.tabId && item.remotePath) {
+    transferStore.removeItem(item.id)
     window.api.retryDownload(item.tabId, item.remotePath)
   }
 }
@@ -182,8 +185,15 @@ onUnmounted(() => {
           <button
             v-if="item.status === 'active'"
             class="queue-action-btn"
-            :title="$t('transferQueue.pause')"
-            @click="pauseTransfer(item)"
+            :class="{ disabled: item.mode === 'stream' }"
+            :title="
+              item.mode === 'stream' ? $t('transferQueue.streamNoPause') : $t('transferQueue.pause')
+            "
+            @click="
+              item.mode === 'stream'
+                ? showToast($t('transferQueue.streamNoPause'))
+                : pauseTransfer(item)
+            "
           >
             ⏸
           </button>
@@ -269,7 +279,10 @@ onUnmounted(() => {
         <div class="queue-meta">
           <span>{{ formatSize(item.transferred) }} / {{ formatSize(item.total) }}</span>
           <span v-if="item.status === 'active'">{{ formatSpeed(item.speed) }}</span>
-          <span v-if="item.status === 'active' || item.status === 'paused'"
+          <span
+            v-if="
+              item.status === 'active' || item.status === 'paused' || item.status === 'completed'
+            "
             >{{ progressPercent(item) }}%</span
           >
           <span v-if="item.status === 'paused'" class="queue-status paused">{{
@@ -531,6 +544,16 @@ onUnmounted(() => {
 .queue-action-btn:hover {
   background: var(--bg-overlay);
   color: var(--text-base);
+}
+
+.queue-action-btn.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.queue-action-btn.disabled:hover {
+  background: none;
+  color: var(--text-muted);
 }
 
 .queue-filename {

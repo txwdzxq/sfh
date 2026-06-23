@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { useConnectionStore } from './stores/connection'
 import { useSettingsStore } from './stores/settings'
 import { useTransferStore } from './stores/transfer'
@@ -22,11 +21,12 @@ import FtpSession from './components/FtpSession.vue'
 import Sidebar from './components/Sidebar.vue'
 import SessionsPanel from './components/SessionsPanel.vue'
 import TransferQueue from './components/TransferQueue.vue'
+import LocalInputBar from './components/LocalInputBar.vue'
+import TabBar from './components/TabBar.vue'
+import TabContextMenu from './components/TabContextMenu.vue'
 import CloseConfirmDialog from './components/CloseConfirmDialog.vue'
 import type { SshConnectionConfig, SshConnection } from '../../main/ssh/types'
-import type { Tab } from './stores/connection'
 
-const { t } = useI18n()
 const connectionStore = useConnectionStore()
 const {
   savedConnections,
@@ -67,6 +67,7 @@ const disconnectCleanup = ref<(() => void) | null>(null)
 const transferCleanups: (() => void)[] = []
 
 const mainVerticalRef = ref<HTMLElement | null>(null)
+const tabBarRef = ref<InstanceType<typeof TabBar> | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
 // 面板固定状态（从设置读取）
@@ -135,15 +136,8 @@ const { dragIndex, dragOverIndex, onDragStart, onDragOver, onDragLeave, doDrop, 
 const { appTransform, onZoomDrag, onZoomApply } = useZoomPreview(() => settingsStore.zoom.value)
 const { windowSize, showSize, onResize, cleanup: resizeCleanup } = useResizeOverlay()
 const { persistTabs } = useTabPersistence()
-const {
-  minimizeWindow,
-  maximizeWindow,
-  closeWindow,
-  confirmClose,
-  cancelClose,
-  pendingClose,
-  onBeforeUnload
-} = useWindowControls(persistTabs, hasActive, () => window.api.cancelAllTransfers())
+const { minimizeWindow, maximizeWindow, closeWindow, confirmClose, cancelClose, pendingClose } =
+  useWindowControls(persistTabs, hasActive, () => window.api.cancelAllTransfers())
 
 const { phase, initError, init: initApp, applyTheme } = useAppInit()
 
@@ -299,6 +293,7 @@ function onTabWheel(e: WheelEvent): void {
 
 onMounted(async () => {
   await initApp()
+  tabBarRef.value?.updateTabColors()
   if (settingsStore.savedTransfers.value.length > 0) {
     restoreQueue(settingsStore.savedTransfers.value)
   }
@@ -311,12 +306,13 @@ onMounted(async () => {
   })
   transferCleanups.push(
     window.api.onTransferProgress((data) => addOrUpdate(data)),
-    window.api.onTransferComplete((data) => markComplete(data.id, data.localPath)),
+    window.api.onTransferComplete((data) =>
+      markComplete(data.id, data.localPath, data.transferred, data.total)
+    ),
     window.api.onTransferError((data) => markError(data.id, data.error)),
     window.api.onTransferCancelled((data) => markCancelled(data.id))
   )
   window.addEventListener('resize', onResize)
-  window.addEventListener('beforeunload', onBeforeUnload)
   resizeObserver = new ResizeObserver(() => {
     const id = activeTabId.value
     if (id) {
@@ -330,7 +326,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
-  window.removeEventListener('beforeunload', onBeforeUnload)
   resizeCleanup()
   disconnectCleanup.value?.()
   transferCleanups.forEach((fn) => fn())
@@ -340,7 +335,10 @@ onUnmounted(() => {
 watch(
   () => settingsStore.theme.value,
   (val) => {
-    if (val) applyTheme(val)
+    if (val) {
+      applyTheme(val)
+      nextTick(() => tabBarRef.value?.updateTabColors())
+    }
   }
 )
 
@@ -349,25 +347,14 @@ watch(activeTabId, (id) => {
   nextTick(() => sessionRefs.value[id]?.focusAndFit())
 })
 
-function getTabColor(tab: Tab): string {
-  const s = getComputedStyle(document.documentElement)
-  const ssh = tab.connected
-  const ftp = tab.ftpConnected
-  if (ssh && ftp) return s.getPropertyValue('--text-primary').trim()
-  if (ssh && !ftp) return s.getPropertyValue('--warning').trim()
-  if (!ssh && ftp) return s.getPropertyValue('--accent').trim()
-  return s.getPropertyValue('--danger').trim()
-}
-
-function getTabTooltip(tab: Tab) {
-  const ssh = tab.connected ? t('app.connected') : t('app.disconnected')
-  const ftp = tab.ftpConnected ? t('app.connected') : t('app.disconnected')
-  return t('app.tabTooltip', { ssh, ftp })
-}
+// 重连锁，防止重复重连
+const reconnecting = new Set<string>()
 
 async function reconnectTab(tabId: string): Promise<void> {
+  if (reconnecting.has(tabId)) return
   const tab = tabs.value.find((t) => t.id === tabId)
   if (!tab || (tab.connected && tab.ftpConnected)) return
+  reconnecting.add(tabId)
   tab.loading = true
   tab.error = null
   window.api.disconnect(tabId)
@@ -395,6 +382,7 @@ async function reconnectTab(tabId: string): Promise<void> {
     tab.ftpConnected = false
   }
   tab.loading = false
+  reconnecting.delete(tabId)
 }
 </script>
 
@@ -409,171 +397,45 @@ async function reconnectTab(tabId: string): Promise<void> {
     <button class="btn-primary" @click="initApp()">{{ $t('app.retry') }}</button>
   </div>
   <div v-else class="app" :style="appTransform">
-    <!-- 标签栏：无系统标题栏时与标题栏合并 -->
-    <div v-if="!useSystemTitleBar" class="frameless-top">
-      <div class="top-left">
-        <span class="app-logo">{{ $t('app.logo') }}</span>
-      </div>
-      <div class="titlebar-tabs frameless">
-        <div class="tab-list">
-          <div
-            v-for="(tab, index) in tabs"
-            :key="tab.id"
-            class="tab"
-            :class="{
-              active: tab.id === activeTabId,
-              dragging: dragIndex === index,
-              'drag-over-left': dragIndex !== null && dragIndex !== index && dragOverIndex === index
-            }"
-            draggable="true"
-            @click="setActiveTab(tab.id)"
-            @mouseup="
-              (e) => {
-                if ((e as MouseEvent).button === 1) handleCloseTab(tab.id)
-              }
-            "
-            @contextmenu.prevent="openContextMenu($event, tab.id)"
-            @wheel.prevent="onTabWheel"
-            @dragstart="onDragStart(index)"
-            @dragover.prevent="onDragOver(index)"
-            @dragleave="onDragLeave"
-            @drop="doDrop(index, moveTab, persistTabs)"
-            @dragend="onDragEnd"
-          >
-            <span
-              class="tab-name"
-              :style="{ color: getTabColor(tab) }"
-              :title="getTabTooltip(tab)"
-              >{{ tab.name }}</span
-            >
-            <button
-              v-if="!tab.connected && !tab.loading"
-              class="tab-refresh"
-              :title="$t('app.subtab.reconnect')"
-              @click.stop="reconnectTab(tab.id)"
-            >
-              ↻
-            </button>
-            <button class="tab-close" @click.stop="handleCloseTab(tab.id)">&times;</button>
-          </div>
-        </div>
-        <div class="titlebar-controls">
-          <button class="titlebar-btn" :title="$t('app.titlebar.minimize')" @click="minimizeWindow">
-            &#x25AC;
-          </button>
-          <button class="titlebar-btn" :title="$t('app.titlebar.maximize')" @click="maximizeWindow">
-            &#x2752;
-          </button>
-          <button
-            class="titlebar-btn titlebar-close"
-            :title="$t('app.titlebar.close')"
-            @click="closeWindow"
-          >
-            &#x2716;
-          </button>
-        </div>
-      </div>
-    </div>
-    <div v-else class="titlebar-tabs" @wheel.prevent="onTabWheel">
-      <div class="tab-list">
-        <div
-          v-for="(tab, index) in tabs"
-          :key="tab.id"
-          class="tab"
-          :class="{
-            active: tab.id === activeTabId,
-            dragging: dragIndex === index,
-            'drag-over-left': dragIndex !== null && dragIndex !== index && dragOverIndex === index
-          }"
-          draggable="true"
-          @click="setActiveTab(tab.id)"
-          @mouseup="
-            (e) => {
-              if ((e as MouseEvent).button === 1) handleCloseTab(tab.id)
-            }
-          "
-          @contextmenu.prevent="openContextMenu($event, tab.id)"
-          @dragstart="onDragStart(index)"
-          @dragover.prevent="onDragOver(index)"
-          @dragleave="onDragLeave"
-          @drop="doDrop(index, moveTab, persistTabs)"
-          @dragend="onDragEnd"
-        >
-          <span class="tab-name" :style="{ color: getTabColor(tab) }" :title="getTabTooltip(tab)">{{
-            tab.name
-          }}</span>
-          <button
-            v-if="!tab.connected && !tab.loading"
-            class="tab-refresh"
-            :title="$t('app.subtab.reconnect')"
-            @click.stop="reconnectTab(tab.id)"
-          >
-            ↻
-          </button>
-          <button class="tab-close" @click.stop="handleCloseTab(tab.id)">&times;</button>
-        </div>
-      </div>
-    </div>
+    <!-- 标签栏 -->
+    <TabBar
+      ref="tabBarRef"
+      :tabs="tabs"
+      :active-tab-id="activeTabId"
+      :frameless="!useSystemTitleBar"
+      :drag-index="dragIndex"
+      :drag-over-index="dragOverIndex"
+      @select="setActiveTab"
+      @close="handleCloseTab"
+      @reconnect="reconnectTab"
+      @contextmenu="(e, id) => openContextMenu(e, id)"
+      @wheel="onTabWheel"
+      @dragstart="onDragStart"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="(i) => doDrop(i, moveTab, persistTabs)"
+      @dragend="onDragEnd"
+      @mouse-up="
+        (id, e) => {
+          if (e.button === 1) handleCloseTab(id)
+        }
+      "
+      @minimize="minimizeWindow"
+      @maximize="maximizeWindow"
+      @close-window="closeWindow"
+    />
     <!-- 右键菜单 -->
-    <div
+    <TabContextMenu
       v-if="contextMenu"
       ref="menuEl"
-      class="context-menu"
-      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-    >
-      <div
-        class="context-menu-item"
-        @click="
-          () => {
-            if (!contextMenu) return
-            reconnectTab(contextMenu.tabId)
-            closeContextMenu()
-          }
-        "
-      >
-        {{ $t('app.tabContextMenu.reload') }}
-      </div>
-      <div class="context-menu-separator"></div>
-      <div
-        class="context-menu-item"
-        @click="
-          () => {
-            if (!contextMenu) return
-            closeTabsToLeft(contextMenu.tabId)
-            closeContextMenu()
-          }
-        "
-      >
-        {{ $t('app.tabContextMenu.closeLeft') }}
-      </div>
-      <div
-        class="context-menu-item"
-        @click="
-          () => {
-            if (!contextMenu) return
-            closeTabsToRight(contextMenu.tabId)
-            closeContextMenu()
-          }
-        "
-      >
-        {{ $t('app.tabContextMenu.closeRight') }}
-      </div>
-      <div
-        class="context-menu-item"
-        @click="
-          () => {
-            closeAllTabs()
-            closeContextMenu()
-          }
-        "
-      >
-        {{ $t('app.tabContextMenu.closeAll') }}
-      </div>
-      <div class="context-menu-separator"></div>
-      <div class="context-menu-item context-menu-close" @click="closeContextMenu()">
-        {{ $t('app.tabContextMenu.close') }}
-      </div>
-    </div>
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @reconnect="(reconnectTab(contextMenu!.tabId), closeContextMenu())"
+      @close-left="(closeTabsToLeft(contextMenu!.tabId), closeContextMenu())"
+      @close-right="(closeTabsToRight(contextMenu!.tabId), closeContextMenu())"
+      @close-all="(closeAllTabs(), closeContextMenu())"
+      @close="closeContextMenu()"
+    />
     <div class="app-body">
       <Sidebar
         :show-dialog="showDialog"
@@ -707,6 +569,13 @@ async function reconnectTab(tabId: string): Promise<void> {
               />
             </div>
           </div>
+          <!-- 本地输入栏 -->
+          <LocalInputBar
+            v-if="activeTab"
+            :tab-id="activeTab.id"
+            :connected="activeTab.connected"
+            :sub-tab="activeTab.subTab"
+          />
         </div>
         <!-- 传输队列（始终 absolute 定位） -->
         <TransferQueue
@@ -776,85 +645,6 @@ body,
   background: var(--bg-base);
 }
 
-.titlebar-tabs {
-  display: flex;
-  align-items: center;
-  background: var(--bg-mantle);
-  border-bottom: 1px solid var(--border);
-  min-height: 36px;
-  flex-shrink: 0;
-}
-
-.titlebar-tabs.frameless {
-  flex: 1;
-  min-width: 0;
-  user-select: none;
-}
-
-.frameless-top {
-  display: flex;
-  flex-direction: row;
-  height: 36px;
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-}
-
-.top-left {
-  width: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-mantle);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.app-logo {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.tab-list {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-  height: 100%;
-}
-
-.titlebar-controls {
-  display: flex;
-  height: 100%;
-  flex-shrink: 0;
-  -webkit-app-region: no-drag;
-}
-
-.titlebar-btn {
-  width: 40px;
-  height: 100%;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.titlebar-btn:hover {
-  background: var(--bg-overlay);
-  color: var(--text-primary);
-}
-
-.titlebar-btn.titlebar-close:hover {
-  background: var(--danger);
-  color: var(--bg-surface);
-}
-
 .app-body {
   flex: 1;
   display: flex;
@@ -867,6 +657,7 @@ body,
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   position: relative;
 }
 
@@ -875,120 +666,8 @@ body,
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   position: relative;
-}
-
-.tab-list::-webkit-scrollbar {
-  display: none;
-}
-
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px 6px 14px;
-  font-size: 13px;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-right: 1px solid var(--border);
-  white-space: nowrap;
-  user-select: none;
-  min-width: 0;
-  -webkit-app-region: no-drag;
-}
-
-.tab:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-.tab.active {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  border-bottom: 2px solid var(--accent);
-}
-
-.tab-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.tab-indicator.connected {
-  background: var(--success);
-}
-
-.tab-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 160px;
-}
-
-.tab-close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0 2px;
-  line-height: 1;
-  border-radius: 2px;
-}
-
-.tab-close:hover {
-  background: var(--bg-overlay);
-  color: var(--danger);
-}
-
-.tab.drag-over-left {
-  border-left: 2px solid var(--accent);
-}
-
-.tab.dragging {
-  opacity: 0.4;
-}
-
-.context-menu {
-  position: fixed;
-  z-index: 10000;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 0;
-  min-width: 120px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-.context-menu-item {
-  padding: 6px 16px;
-  font-size: 13px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: background 0.1s;
-  white-space: nowrap;
-}
-
-.context-menu-item:hover {
-  background: var(--bg-overlay);
-  color: var(--accent);
-}
-
-.context-menu-separator {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 0;
-}
-
-.context-menu-close {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.context-menu-close:hover {
-  color: var(--danger);
-  background: var(--bg-overlay);
 }
 
 .subtab-bar {
@@ -1072,8 +751,11 @@ body,
 
 .content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
 }
 
 .status-bar {
@@ -1125,7 +807,10 @@ body,
 }
 
 .session-wrapper {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .welcome {

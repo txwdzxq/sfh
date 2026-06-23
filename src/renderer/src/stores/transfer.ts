@@ -14,6 +14,7 @@ export interface TransferItem {
   tabId?: string
   remotePath?: string
   connectionKey?: string
+  mode?: 'chunk' | 'stream'
 }
 
 const state = reactive({
@@ -40,14 +41,17 @@ export function useTransferStore() {
     remotePath?: string
     localPath?: string
     connectionKey?: string
+    mode?: 'chunk' | 'stream'
   }): void {
     const idx = findIndex(data.id)
     if (idx >= 0) {
       const item = state.items[idx]
+      if (item.status === 'completed' || item.status === 'cancelled') return
       item.transferred = data.transferred
       item.total = data.total
       item.speed = data.speed
-      if (item.status === 'completed' || item.status === 'error') {
+      if (data.mode) item.mode = data.mode
+      if (item.status === 'error') {
         item.status = 'active'
       }
     } else {
@@ -66,15 +70,27 @@ export function useTransferStore() {
         tabId: data.tabId,
         remotePath: data.remotePath,
         localPath: data.localPath,
-        connectionKey: data.connectionKey
+        connectionKey: data.connectionKey,
+        mode: data.mode
       })
     }
   }
 
-  function markComplete(id: string, localPath?: string): void {
+  function markComplete(
+    id: string,
+    localPath?: string,
+    _transferred?: number,
+    total?: number
+  ): void {
     const idx = findIndex(id)
     if (idx >= 0) {
       state.items[idx].status = 'completed'
+      if (total != null && total > 0) {
+        state.items[idx].total = total
+        state.items[idx].transferred = total
+      } else {
+        state.items[idx].transferred = state.items[idx].total
+      }
       if (localPath) state.items[idx].localPath = localPath
     }
   }

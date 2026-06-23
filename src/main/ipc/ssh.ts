@@ -70,6 +70,7 @@ function sendProgress(payload: {
   remotePath?: string
   localPath?: string
   connectionKey?: string
+  mode?: 'chunk' | 'stream'
 }): void {
   BrowserWindow.getAllWindows().forEach((win) => {
     win.webContents.send(IPC.TRANSFER_PROGRESS, payload)
@@ -77,10 +78,10 @@ function sendProgress(payload: {
 }
 
 /** 发送传输完成事件 */
-function sendComplete(id: string): void {
+function sendComplete(id: string, transferred?: number, total?: number): void {
   const localPath = transferLocalPaths.get(id)
   BrowserWindow.getAllWindows().forEach((win) => {
-    win.webContents.send(IPC.TRANSFER_COMPLETE, { id, localPath })
+    win.webContents.send(IPC.TRANSFER_COMPLETE, { id, localPath, transferred, total })
   })
   transferLocalPaths.delete(id)
 }
@@ -205,6 +206,7 @@ export function registerSshIpc(): void {
       const tid = transferId()
       transferLocalPaths.set(tid, localPath)
       const connKey = sshManager.getConnectionKey(id)
+      const mode = settings.settings.downloadMode
       sendProgress({
         id: tid,
         filename: localFilename,
@@ -215,27 +217,66 @@ export function registerSshIpc(): void {
         tabId: id,
         remotePath,
         localPath,
-        connectionKey: connKey
+        connectionKey: connKey,
+        mode
       })
       const trackSpeed = createSpeedTracker()
-      console.log(`[ipc] sftp:download ${remotePath} → ${localPath}`)
+      let lastTransferred = 0
+      let lastTotal = 0
+      console.log(`[ipc] sftp:download (${mode}) ${remotePath} → ${localPath}`)
       try {
-        await sshManager.downloadControlled(id, remotePath, localPath, tid, (transferred, total) => {
-          const speed = trackSpeed(transferred)
-          sendProgress({
-            id: tid,
-            filename: localFilename,
-            type: 'download',
-            transferred,
-            total,
-            speed,
-            tabId: id,
+        if (mode === 'stream') {
+          await sshManager.downloadStreamed(
+            id,
             remotePath,
             localPath,
-            connectionKey: connKey
-          })
-        })
-        sendComplete(tid)
+            tid,
+            (transferred, total) => {
+              lastTransferred = transferred
+              lastTotal = total
+              const speed = trackSpeed(transferred)
+              sendProgress({
+                id: tid,
+                filename: localFilename,
+                type: 'download',
+                transferred,
+                total,
+                speed,
+                tabId: id,
+                remotePath,
+                localPath,
+                connectionKey: connKey,
+                mode: 'stream'
+              })
+            }
+          )
+        } else {
+          await sshManager.downloadControlled(
+            id,
+            remotePath,
+            localPath,
+            tid,
+            (transferred, total) => {
+              lastTransferred = transferred
+              lastTotal = total
+              const speed = trackSpeed(transferred)
+              sendProgress({
+                id: tid,
+                filename: localFilename,
+                type: 'download',
+                transferred,
+                total,
+                speed,
+                tabId: id,
+                remotePath,
+                localPath,
+                connectionKey: connKey,
+                mode: 'chunk'
+              })
+            }
+          )
+        }
+        sendComplete(tid, lastTransferred, lastTotal)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (msg === 'transfer cancelled') return
@@ -257,13 +298,17 @@ export function registerSshIpc(): void {
     const tid = transferId()
     sendProgress({ id: tid, filename, type: 'upload', transferred: 0, total: 0, speed: 0 })
     const trackSpeed = createSpeedTracker()
+    let lastTransferred = 0
+    let lastTotal = 0
     console.log(`[ipc] sftp:upload ${localPath} → ${remotePath}`)
     try {
       await sshManager.uploadControlled(id, localPath, remotePath, tid, (transferred, total) => {
+        lastTransferred = transferred
+        lastTotal = total
         const speed = trackSpeed(transferred)
         sendProgress({ id: tid, filename, type: 'upload', transferred, total, speed })
       })
-      sendComplete(tid)
+      sendComplete(tid, lastTransferred, lastTotal)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg === 'transfer cancelled') return
@@ -281,13 +326,17 @@ export function registerSshIpc(): void {
       const tid = transferId()
       sendProgress({ id: tid, filename, type: 'upload', transferred: 0, total: 0, speed: 0 })
       const trackSpeed = createSpeedTracker()
+      let lastTransferred = 0
+      let lastTotal = 0
       console.log(`[ipc] sftp:uploadFile ${localPath} → ${remotePath}`)
       try {
         await sshManager.uploadControlled(id, localPath, remotePath, tid, (transferred, total) => {
+          lastTransferred = transferred
+          lastTotal = total
           const speed = trackSpeed(transferred)
           sendProgress({ id: tid, filename, type: 'upload', transferred, total, speed })
         })
-        sendComplete(tid)
+        sendComplete(tid, lastTransferred, lastTotal)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (msg === 'transfer cancelled') return
@@ -347,9 +396,13 @@ export function registerSshIpc(): void {
         remotePath
       })
       const trackSpeed = createSpeedTracker()
+      let lastTransferred = 0
+      let lastTotal = 0
       console.log(`[ipc] sftp:downloadDirect ${remotePath} → ${localPath}`)
       try {
         await sshManager.download(id, remotePath, localPath, (transferred, total) => {
+          lastTransferred = transferred
+          lastTotal = total
           const speed = trackSpeed(transferred)
           sendProgress({
             id: tid,
@@ -362,7 +415,7 @@ export function registerSshIpc(): void {
             remotePath
           })
         })
-        sendComplete(tid)
+        sendComplete(tid, lastTransferred, lastTotal)
       } catch (err) {
         sendError(tid, sanitizeSshError(err).message)
         throw sanitizeSshError(err)
@@ -380,53 +433,90 @@ export function registerSshIpc(): void {
     sshManager.pauseTransfer(tid)
   })
 
-  ipcMain.on(IPC.TRANSFER_RESUME, (_event, tid: string, tabId?: string, remotePath?: string, localPath?: string, offset?: number, connectionKey?: string) => {
-    if (!tid || typeof tid !== 'string') return
-    console.log(`[ipc] transfer:resume ${tid}`)
-    const resumed = sshManager.resumeTransfer(tid)
-    if (!resumed && remotePath && localPath && offset !== undefined) {
-      let activeId = tabId
-      if (!activeId || !sshManager.hasSession(activeId)) {
-        if (connectionKey) {
-          activeId = sshManager.findSessionByConnectionKey(connectionKey)
+  ipcMain.on(
+    IPC.TRANSFER_RESUME,
+    (
+      _event,
+      tid: string,
+      tabId?: string,
+      remotePath?: string,
+      localPath?: string,
+      offset?: number,
+      connectionKey?: string
+    ) => {
+      if (!tid || typeof tid !== 'string') return
+      console.log(`[ipc] transfer:resume ${tid}`)
+      const resumed = sshManager.resumeTransfer(tid)
+      if (!resumed && remotePath && localPath && offset !== undefined) {
+        let activeId = tabId
+        if (!activeId || !sshManager.hasSession(activeId)) {
+          if (connectionKey) {
+            activeId = sshManager.findSessionByConnectionKey(connectionKey)
+          }
         }
-      }
-      if (!activeId || !sshManager.hasSession(activeId)) {
-        console.log(`[ipc] transfer:resume failed — no matching active session`)
-        sendError(tid, 'SSH 连接已断开，请先重新连接')
-        return
-      }
-      console.log(`[ipc] transfer:resume starting new download ${remotePath} → ${localPath} at offset ${offset} via session ${activeId}`)
-      const trackSpeed = createSpeedTracker()
-      const connKey = sshManager.getConnectionKey(activeId)
-      sendProgress({
-        id: tid,
-        filename: localPath.replace(/\\/g, '/').split('/').pop() || 'file',
-        type: 'download',
-        transferred: offset,
-        total: 0,
-        speed: 0,
-        tabId: activeId,
-        remotePath,
-        localPath,
-        connectionKey: connKey
-      })
-      sshManager.downloadControlled(activeId, remotePath, localPath, tid, (transferred, total) => {
-        const speed = trackSpeed(transferred)
-        sendProgress({ id: tid, filename: localPath.replace(/\\/g, '/').split('/').pop() || 'file', type: 'download', transferred, total, speed, tabId: activeId, remotePath, localPath, connectionKey: connKey })
-      }, offset).then(() => {
-        BrowserWindow.getAllWindows().forEach((win) => {
-          win.webContents.send(IPC.TRANSFER_COMPLETE, { id: tid, localPath })
+        if (!activeId || !sshManager.hasSession(activeId)) {
+          console.log(`[ipc] transfer:resume failed — no matching active session`)
+          sendError(tid, 'SSH 连接已断开，请先重新连接')
+          return
+        }
+        console.log(
+          `[ipc] transfer:resume starting new download ${remotePath} → ${localPath} at offset ${offset} via session ${activeId}`
+        )
+        const trackSpeed = createSpeedTracker()
+        const connKey = sshManager.getConnectionKey(activeId)
+        sendProgress({
+          id: tid,
+          filename: localPath.replace(/\\/g, '/').split('/').pop() || 'file',
+          type: 'download',
+          transferred: offset,
+          total: 0,
+          speed: 0,
+          tabId: activeId,
+          remotePath,
+          localPath,
+          connectionKey: connKey
         })
-      }).catch((err) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg === 'transfer cancelled') return
-        BrowserWindow.getAllWindows().forEach((win) => {
-          win.webContents.send(IPC.TRANSFER_ERROR, { id: tid, error: sanitizeSshError(err).message })
-        })
-      })
+        sshManager
+          .downloadControlled(
+            activeId,
+            remotePath,
+            localPath,
+            tid,
+            (transferred, total) => {
+              const speed = trackSpeed(transferred)
+              sendProgress({
+                id: tid,
+                filename: localPath.replace(/\\/g, '/').split('/').pop() || 'file',
+                type: 'download',
+                transferred,
+                total,
+                speed,
+                tabId: activeId,
+                remotePath,
+                localPath,
+                connectionKey: connKey
+              })
+            },
+            offset
+          )
+          .then(() => {
+            BrowserWindow.getAllWindows().forEach((win) => {
+              win.webContents.send(IPC.TRANSFER_COMPLETE, { id: tid, localPath })
+            })
+          })
+          .catch((err) => {
+            const msg = err instanceof Error ? err.message : String(err)
+            if (msg === 'transfer cancelled') return
+            BrowserWindow.getAllWindows().forEach((win) => {
+              win.webContents.send(IPC.TRANSFER_ERROR, {
+                id: tid,
+                error: sanitizeSshError(err).message
+              })
+            })
+          })
+      }
     }
-  })
+  )
 
   ipcMain.on(IPC.TRANSFER_CANCEL, (_event, tid: string) => {
     if (!tid || typeof tid !== 'string') return

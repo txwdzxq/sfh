@@ -42,6 +42,7 @@ export const IPC = {
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
   WINDOW_GET_POSITION: 'window:getPosition',
   WINDOW_SET_POSITION: 'window:setPosition',
+  WINDOW_SET_OPACITY: 'window:setOpacity',
 
   // Shell
   SHELL_SHOW_ITEM: 'shell:showItemInFolder',
