@@ -28,9 +28,14 @@ function invokeWithTimeout<T>(channel: string, timeoutMs: number, ...args: unkno
 // 所有与主进程通信的 API
 const sshApi = {
   // SSH 连接（invoke/handle，等待结果）
-  connect: (id: string, config: SshConnectionConfig): Promise<void> => {
+  connect: (
+    id: string,
+    config: SshConnectionConfig,
+    cols?: number,
+    rows?: number
+  ): Promise<void> => {
     if (process.env.NODE_ENV !== 'production') console.log(`[preload] connect id=${id}`)
-    return invokeWithTimeout<void>(IPC.SSH_CONNECT, 30000, id, config)
+    return invokeWithTimeout<void>(IPC.SSH_CONNECT, 30000, id, config, cols, rows)
   },
   // 写入数据到 shell（send/on，单向）
   write: (id: string, data: string): void => ipcRenderer.send(IPC.SSH_WRITE, id, data),

@@ -3,7 +3,7 @@ import type { SettingsData } from '../shared/types'
 import type { SshConnectionConfig, SshConnection, SftpEntry } from '../main/ssh/types'
 
 interface SshApi {
-  connect(id: string, config: SshConnectionConfig): Promise<void>
+  connect(id: string, config: SshConnectionConfig, cols?: number, rows?: number): Promise<void>
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
   disconnect(id: string): void

@@ -153,6 +153,12 @@ function fitTerminal(): void {
   nextTick(() => fitAddon?.fit())
 }
 
+function fitAndGetDimensions(): { cols: number; rows: number } | null {
+  fitAddon?.fit()
+  if (terminal) return { cols: terminal.cols, rows: terminal.rows }
+  return null
+}
+
 const cleanups: (() => void)[] = []
 
 onMounted(() => {
@@ -222,7 +228,7 @@ function markConnected(): void {
   }, 500)
 }
 
-defineExpose({ fitTerminal, terminal, focusAndFit, markConnected })
+defineExpose({ fitTerminal, terminal, focusAndFit, markConnected, fitAndGetDimensions })
 </script>
 
 <template>
@@ -241,7 +247,9 @@ defineExpose({ fitTerminal, terminal, focusAndFit, markConnected })
 <style scoped>
 .terminal-container {
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: var(--bg-base);
   position: relative;
   padding: 5px;

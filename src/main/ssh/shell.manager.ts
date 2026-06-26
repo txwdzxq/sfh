@@ -19,7 +19,12 @@ export class SSHShellManager {
   onError: ((id: string, message: string) => void) | null = null
   onDisconnect: ((id: string) => void) | null = null
 
-  async connect(id: string, config: SshConnectionConfig): Promise<void> {
+  async connect(
+    id: string,
+    config: SshConnectionConfig,
+    cols?: number,
+    rows?: number
+  ): Promise<void> {
     // 如果已存在同名会话，先断开清理，避免竞争条件
     if (this.sessions.has(id)) this.disconnect(id)
 
@@ -38,7 +43,7 @@ export class SSHShellManager {
       client.on('ready', () => {
         clearTimeout(timer)
         settled = true
-        client.shell({ term: 'xterm-256color' }, (err, shell) => {
+        client.shell({ term: 'xterm-256color', cols, rows }, (err, shell) => {
           if (err) {
             client.end()
             return reject(err)

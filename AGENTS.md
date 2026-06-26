@@ -39,39 +39,55 @@ OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 │        transfer.ts   传输队列状态                  │
 │        settings.ts   用户设置                      │
 │      components/                                  │
-│        TabBar.vue             标签栏(统一 frameless/system) │
-│        TabContextMenu.vue     标签页右键菜单       │
-│        LocalInputBar.vue      本地输入栏+快捷命令  │
-│        Sidebar.vue          左侧垂直工具栏        │
-│        SessionsPanel.vue     浮动会话列表面板     │
-│        ConnectionDialog.vue  连接/编辑对话框      │
-│        SshSession.vue        SSH 会话生命周期     │
-│        SshTerminal.vue       xterm.js 终端        │
-│        FtpSession.vue         FTP 文件浏览器      │
-│        TransferQueue.vue      传输队列面板        │
-│        SettingsDialog.vue     设置对话框          │
-│        AboutDialog.vue        关于对话框          │
-│        CloseConfirmDialog.vue 关闭确认弹窗        │
-│      composables/                                │
-│        useAppInit.ts         应用初始化           │
-│        useTabManager.ts      标签页管理           │
-│        useTabPersistence.ts  tab/队列持久化       │
-│        useTabDrag.ts         标签页拖拽            │
-│        useTabContextMenu.ts  右键菜单              │
-│        useFtpCache.ts        FTP 缓存             │
-│        useWindowControls.ts  关闭确认              │
-│        useZoomPreview.ts     缩放预览              │
-│        useResizeOverlay.ts   窗口尺寸叠加          │
-│      services/                                    │
-│        sshService.ts         IPC 封装 (SSH/SFTP)  │
-│        settingsService.ts    IPC 封装 (Settings)  │
-│      utils/                                       │
-│        deepClone.ts          深拷贝工具            │
-│        throttle.ts           节流工具              │
-│      assets/  (CSS/图标)                          │
-│      locales/                                     │
-│        zh-CN.json                                 │
-│        en.json                                    │
+│        TabBar.vue              标签栏(统一 frameless/system) │
+│        TabContextMenu.vue      标签页右键菜单       │
+│        LocalInputBar.vue       本地输入栏+快捷命令  │
+│        Sidebar.vue             左侧垂直工具栏       │
+│        SessionsPanel.vue       浮动会话列表面板     │
+│        ConnectionDialog.vue    连接/编辑对话框      │
+│        SshSession.vue          SSH 会话生命周期     │
+│        SshTerminal.vue         xterm.js 终端        │
+│        FtpSession.vue          FTP 文件浏览器       │
+│        TransferQueue.vue       传输队列面板         │
+│        SettingsDialog.vue      设置对话框           │
+│        AboutDialog.vue         关于对话框           │
+│        CloseConfirmDialog.vue  关闭确认弹窗         │
+│        InitScreen.vue          初始化加载/错误屏幕   │
+│        WelcomeScreen.vue      空白欢迎页            │
+│        SubTabBar.vue           SSH/FTP 子标签栏     │
+│        ConnectionStatusBar.vue 连接状态提示条       │
+│        SessionRenderer.vue    session v-for 渲染器  │
+│        DialogsSection.vue     所有对话框容器        │
+│      composables/                                  │
+│        useAppInit.ts          应用初始化             │
+│        useAppIpcListeners.ts  IPC 监听器 + 生命周期 │
+│        useAppUI.ts            对话框/面板 UI 状态   │
+│        useTabManager.ts       标签页管理             │
+│        useTabPersistence.ts   tab/队列持久化         │
+│        useTabDrag.ts          标签页拖拽              │
+│        useTabContextMenu.ts   右键菜单               │
+│        useTabActions.ts       tab 关闭/批量操作      │
+│        useSessionActions.ts   连接对话框 CRUD        │
+│        useSessionCallbacks.ts 连接成功/失败回调      │
+│        useReconnect.ts        断线重连               │
+│        useFtpCache.ts         FTP 缓存               │
+│        useWindowControls.ts   关闭确认               │
+│        useZoomPreview.ts      缩放预览               │
+│        useResizeOverlay.ts    窗口尺寸叠加           │
+│        usePanelResize.ts      面板拖拽调整宽度       │
+│        useFlyParticle.ts      飞入粒子动画           │
+│      services/                                      │
+│        sshService.ts          IPC 封装 (SSH/SFTP)   │
+│      utils/                                         │
+│        deepClone.ts           深拷贝工具             │
+│        toast.ts               Toast 通知            │
+│      assets/  (CSS/图标)                            │
+│        app-layout.css         全局骨架布局样式       │
+│        themes.css             Catppuccin 主题色      │
+│        main.css               基础样式入口           │
+│      locales/                                       │
+│        zh-CN.json                                   │
+│        en.json                                      │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -98,9 +114,22 @@ OpenCode + Electron + Vue 3 + TypeScript SSH Terminal
 | `src/renderer/src/components/TransferQueue.vue` | 传输进度队列 (暂停/继续/取消/持久化) |
 | `src/renderer/src/components/CloseConfirmDialog.vue` | 关闭确认弹窗 |
 | `src/renderer/src/components/SettingsDialog.vue` | 设置对话框 (通用/显示/终端) |
+| `src/renderer/src/components/InitScreen.vue` | 初始化加载/错误屏幕 |
+| `src/renderer/src/components/WelcomeScreen.vue` | 空白欢迎页 |
+| `src/renderer/src/components/SubTabBar.vue` | SSH/FTP 子标签栏 |
+| `src/renderer/src/components/ConnectionStatusBar.vue` | 连接状态提示条 |
+| `src/renderer/src/components/SessionRenderer.vue` | session v-for 渲染器 |
+| `src/renderer/src/components/DialogsSection.vue` | 所有对话框容器 |
 | `src/renderer/src/composables/useTabManager.ts` | 标签页交互逻辑封装 |
+| `src/renderer/src/composables/useAppInit.ts` | 应用初始化 |
+| `src/renderer/src/composables/useAppIpcListeners.ts` | IPC 监听器 + 生命周期 |
+| `src/renderer/src/composables/useAppUI.ts` | 对话框/面板 UI 状态 |
+| `src/renderer/src/composables/useReconnect.ts` | 断线重连 |
+| `src/renderer/src/composables/useTabActions.ts` | tab 关闭/批量操作 |
+| `src/renderer/src/composables/useSessionActions.ts` | 连接对话框 CRUD |
+| `src/renderer/src/composables/useSessionCallbacks.ts` | 连接成功/失败回调 |
+| `src/renderer/src/composables/useFlyParticle.ts` | 飞入粒子动画 |
 | `src/renderer/src/services/sshService.ts` | 类型安全 IPC 服务封装 (SSH/SFTP) |
-| `src/renderer/src/services/settingsService.ts` | 类型安全 IPC 服务封装 (Settings/Store) |
 | `src/main/ssh/shell.manager.ts` | SSH Shell 连接管理与 IO 处理 |
 | `src/main/ssh/sftp.manager.ts` | SFTP 通道管理与文件传输 |
 
@@ -250,12 +279,24 @@ SshManager
 - 主题：Catppuccin Mocha (背景 `#11111b` `#1e1e2e`, 强调 `#89b4fa`)
 - 窗口状态（尺寸/位置/最大化）在 `close` 事件中保存到 `settings.json`，`resize` 防抖 500ms 只保存正常（非最大化）尺寸
 - **不允许在 `beforeunload` 中写窗口状态**：渲染器 `beforeunload` 中的 `persistFn()` 无 await，IPC invoke 排队在主进程，`close` 处理器先保存正确数据后被排队 IPC 覆盖
-- **Flex 高度约束链**：`.app` → `.app-body(min-height:0)` → `.main-area(min-height:0)` → `.main-vertical(min-height:0)` → `.content(min-height:0, overflow:hidden, display:flex, flex-direction:column)` → `.session-wrapper(min-height:0, display:flex, flex-direction:column)` → `.session-container(min-height:0, display:flex, flex-direction:column)` → `.terminal-container(min-height:0)`，任何一层缺少 `min-height: 0` 或 `display: flex` 都会导致窗口缩小时底部输入栏被挤出可视区域或终端内容被裁剪
+- **Flex 高度约束链**：`.app` → `.app-body(min-height:0)` → `.main-area(min-height:0)` → `.main-vertical(min-height:0)` → `.content(min-height:0, overflow:hidden, display:flex, flex-direction:column)` → `.session-wrapper(min-height:0, display:flex, flex-direction:column)` → `.session-container(min-height:0, display:flex, flex-direction:column)` → `.terminal-container(min-width:0, min-height:0, overflow:hidden)`，任何一层缺少 `min-height: 0` 或 `display: flex` 都会导致窗口缩小时底部输入栏被挤出可视区域或终端内容被裁剪
+- **Flex 宽度约束链**：面板固定时 `.main-vertical` 通过 `paddingLeft`/`paddingRight` 缩窄内容区域。为保证子项正确收缩，以下元素必须设置 `min-width: 0`：`.main-vertical`、`.content`、`.session-wrapper`、`.terminal-container`。缺少 `min-width: 0` 会导致 `min-width: auto`（默认）阻止子项收缩到内容固有最小宽度以下，使 `.xterm-screen`/`.xterm-rows` 溢出到 padding 区域。`.main-vertical` 还需 `overflow: hidden` 在 padding 边缘建立视觉裁剪边界
 - **传输完成进度确保**：所有传输方法（`uploadControlled`、`downloadControlled`、`downloadStreamed`）在 resolve 前必须调用 `onProgress(total, total)` 确保 100% 进度。IPS 层的 `sendComplete` 捕获最后的 `lastTransferred`/`lastTotal` 传递给渲染进程。Renderer store 的 `markComplete` 强制 `transferred = total`，确保 UI 始终显示 100%。
 - **SFTP WriteStream 事件选择**：`ssh2` 的 `sftp.createWriteStream()` 可能不发射 `finish` 事件，必须同时监听 `finish` 和 `close` 两个事件，使用 `settled` 标志防止重复 resolve。
 - **进度节流**：`uploadControlled` 内部使用 200ms 节流（`throttledProgress`）控制 `onProgress` 回调频率，避免 IPC 消息风暴。渲染进程的 `addOrUpdate` 不再使用额外节流，直接更新 store。
 - **addOrUpdate 阻止 completed/cancelled 更新**：防止节流延迟到达的旧进度值覆盖 `markComplete` 已设好的正确值。如果需要在完成后允许更新，须确保只接受非递减的 `transferred` 值。
 - **Vue 模板多行表达式**：Vue 模板事件处理器中使用多行表达式时，语句之间需要 `;` 分隔（如 `stmt1; stmt2`），否则 Vue 编译器报 `Unexpected token, expected ","`。推荐用逗号表达式 `(a, b)` 单行写法，不会被 Prettier 重新格式化。
-- **SSH resize 宽限期**：`SshTerminal.vue` 不使用 `ResizeObserver`（避免每次终端内容变化触发 `fitAddon.fit()` → SSH resize 导致 zsh PROMPT_EOL_MARK `%` 多出）。窗口 resize 由 `window.addEventListener('resize')` 覆盖，布局变化由 `App.vue` 的 `ResizeObserver` on `mainVerticalRef` 覆盖。连接建立后 `markConnected()` 启动 500ms 宽限期，期间 `terminal.onResize` 仅缓冲不发送，宽限期结束后发送缓冲的 resize
+- **SSH resize 宽限期**：`SshTerminal.vue` 不使用 `ResizeObserver`（避免每次终端内容变化触发 `fitAddon.fit()` → SSH resize 导致 zsh PROMPT_EOL_MARK `%` 多出）。窗口 resize 由 `window.addEventListener('resize')` 覆盖，布局变化由 `App.vue` 的 `ResizeObserver` on `mainVerticalRef` + 显式 `watch` on 面板固定/宽度 覆盖。连接建立后 `markConnected()` 启动 500ms 宽限期，期间 `terminal.onResize` 仅缓冲不发送，宽限期结束后发送缓冲的 resize
+- **PTY 初始尺寸**：`ssh2` 的 `client.shell()` 若未指定 `cols`/`rows`，默认以 80×24 创建 PTY，导致后续 resize 时 zsh 输出 `%`（PROMPT_EOL_MARK）。修复：`SshSession.vue` 在 `onMounted` 中先 `nextTick` 确保终端就绪，调用 `terminalRef.fitAndGetDimensions()` 获取实际尺寸，通过 IPC 链路传到 `client.shell({ cols, rows })`，使 PTY 从创建起就使用正确列数，避免后续 resize。
+- **面板可拖拽调整宽度**：会话列表（左侧）和传输队列（右侧）面板边缘有 4px 宽的拖拽手柄，hover 时变 accent 色。拖拽时通过 `usePanelResize` composable 处理 mousedown/mousemove/mouseup，宽度实时更新并通过 v-model 同步到 App.vue。左右面板各自有宽高约束（会话：160–500px，队列：200–600px），宽度值持久化到 `settings.json`。
+- **面板宽度变化强制终端 resize**：`App.vue` 中 `watch([sessionsPinned, queuePinned, sessionPanelWidth, queuePanelWidth])` 在 `nextTick` 后调用 `sessionRefs[id]?.focusAndFit()`，配合 ResizeObserver 双重保障，确保 xterm 在面板固定/宽度变化时重新计算列数。
+- **面板宽度持久化时序**：`App.vue` 和 `useAppUI.ts` 中必须使用 `settingsStore.sessionPanelWidth`（store 的 `toRef`）而非 `ref(store.value)`。因为 store `load()` 在 `onMounted` 中执行，用 `ref()` 会捕获 setup 阶段的默认值（240），导致持久化值在重启后丢失。使用 `toRef` 后，store `load()` 完成时局部变量自动同步。
 - **组件拆分原则**：App.vue 仅保留布局骨架 + 状态管理 + 事件分发；自包含的 UI 区域（标签栏、输入栏、右键菜单）拆为独立 `.vue` 组件，script + template + style 一起移出；子组件通过 props 接收数据、通过 emits 向上传递事件
 - **窗口透明度映射**：滑块值 `0-100` 通过 `windowOpacity = 0.8 + sliderFactor × 0.2` 映射到 Electron 的 `setOpacity(0.8-1.0)`。滑块 0% → 窗口 80% 透明度，滑块 100% → 窗口 100% 透明度。映射只在 `main/index.ts` 的 IPC handler 和启动代码中进行，store 中存储原始滑块值 (0-100)。
+- **Composable 参数策略**：Pinia store 是全局单例，在 composable 内部直接 `import` 使用；非单例（如 `ref`, 回调函数）作为函数参数传入。
+- **App.vue 分解原则**：App.vue 仅保留布局骨架 + composable 编排 + 事件派发（~140 行 script + ~140 行 template）；自包含 UI 区域拆为独立组件；有状态的逻辑拆为 composable。组件通过 props 接收数据、emits 向上传递事件。
+- **CSS 样式范围**：组件样式使用 `<style scoped>` 隔离；`app-layout.css` 仅保留全局骨架布局（Flex 容器链 + min-height:0），已从 257 行缩减至 44 行。`base.css` 已删除。
+- **死代码清理**：`utils/throttle.ts`（未使用）、`services/settingsService.ts`（未使用）、`assets/wavy-lines.svg`/`electron.svg`（未使用）、`useWindowControls.onBeforeUnload`（AGENTS.md 禁止）均已删除。
+- **Template Ref 绑定**：当 composable 需要访问组件模板 ref（如点击外部关闭菜单），在 App.vue 中创建本地 `ref<InstanceType>`并传入 composable；composable 通过 `menuEl.value?.$el.contains()` 检测点击区域，而非直接绑定 `HTMLElement` 类型。
+- **端口输入框滚轮修改**：`ConnectionDialog.vue` 中 port `<input>` 绑定 `@wheel.prevent="onPortWheel"`。滚轮向上 +1（Shift +1）、向下 -1（Shift +10），自动夹紧 [1, 65535]。
+- **vue-i18n `@` 转义**：vue-i18n 的消息编译器将 `@` 解析为 linked format 标记。对于 `user@host:port` 这类语言无关的字符串，不要放在 locale JSON 中，直接在组件中用 computed 拼接。

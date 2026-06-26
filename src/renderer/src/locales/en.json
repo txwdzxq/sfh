@@ -58,7 +58,7 @@
   "connectionDialog.portError": "Port must be 1-65535",
   "connectionDialog.authError.password": "Password is required",
   "connectionDialog.authError.key": "Please paste private key or select file",
-  "connectionDialog.placeholder.displayName": "{user}@{host}:{port}",
+
   "connectionDialog.placeholder.privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
   "connectionDialog.cancel": "Cancel",
   "connectionDialog.connect": "Connect",

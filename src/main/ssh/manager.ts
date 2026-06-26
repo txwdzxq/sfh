@@ -21,8 +21,13 @@ export class SshManager {
     this.shellManager.onDisconnect = handlers.onDisconnect
   }
 
-  async connect(id: string, config: SshConnectionConfig): Promise<void> {
-    await this.shellManager.connect(id, config)
+  async connect(
+    id: string,
+    config: SshConnectionConfig,
+    cols?: number,
+    rows?: number
+  ): Promise<void> {
+    await this.shellManager.connect(id, config, cols, rows)
   }
 
   write(id: string, data: string): void {

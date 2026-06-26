@@ -2,7 +2,8 @@ import type { SshConnectionConfig, SftpEntry } from '../../../main/ssh/types'
 
 export const sshService = {
   // SSH API
-  connect: (id: string, config: SshConnectionConfig) => window.api.connect(id, config),
+  connect: (id: string, config: SshConnectionConfig, cols?: number, rows?: number) =>
+    window.api.connect(id, config, cols, rows),
   write: (id: string, data: string) => window.api.write(id, data),
   resize: (id: string, cols: number, rows: number) => window.api.resize(id, cols, rows),
   disconnect: (id: string) => window.api.disconnect(id),

@@ -88,6 +88,8 @@ export function loadSettings(): SettingsData {
         showQueueOnDownload: false,
         sessionsPinned: false,
         queuePinned: false,
+        sessionPanelWidth: 240,
+        queuePanelWidth: 340,
         downloadMode: 'chunk' as const,
         opacity: 100
       },
@@ -124,6 +126,8 @@ export function loadSettingsData(): AppSettings {
       showQueueOnDownload: false,
       sessionsPinned: false,
       queuePinned: false,
+      sessionPanelWidth: 240,
+      queuePanelWidth: 340,
       downloadMode: 'chunk' as const,
       opacity: 100
     }

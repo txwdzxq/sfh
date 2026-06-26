@@ -4,7 +4,7 @@
 import { useI18n } from 'vue-i18n'
 import type { Tab } from '../stores/connection'
 
-const props = defineProps<{
+defineProps<{
   tabs: Tab[]
   activeTabId: string | null
   frameless: boolean
@@ -314,5 +314,20 @@ defineExpose({ updateTabColors })
 
 .tab.dragging {
   opacity: 0.4;
+}
+.tab-refresh {
+  background: none;
+  border: none;
+  color: var(--bg-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: 2px;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.tab-refresh:hover {
+  color: var(--accent);
 }
 </style>

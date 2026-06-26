@@ -1,11 +1,39 @@
 # SFH — Product Feature Specification
 
+## Architecture — Renderer Decomposition
+
+### 0.1 App.vue Decomposition
+- App.vue 仅保留布局骨架 + composable 编排 + 事件派发（~144 行 script + ~140 行 template）
+- 自包含 UI 区域拆为独立 `.vue` 组件（19 个组件）
+- 有状态逻辑拆为 composable（17 个 composable）
+- 组件通过 props 接收数据、通过 emits 向上传递事件
+
+### 0.2 Composable 参数策略
+- Pinia store 是全局单例 → composable 内部直接 `import` 使用
+- 非单例（`ref`、回调函数）→ 作为函数参数传入
+- composable 示例：`useReconnect(ftpCache)`, `useTabActions(removeCache)`, `useTabContextMenu(tabMenuRef)`, `usePanelResize(localWidth, { minWidth, maxWidth, direction })`
+- `usePanelResize` 拖拽 composable：接受 `Ref<number>` 和选项，在 panel 组件内部直接使用，通过 `v-model:width` 同步到 App.vue
+
+### 0.3 CSS 作用域
+- 组件样式使用 `<style scoped>` 隔离
+- `app-layout.css` 仅保留全局骨架布局（Flex 容器链 + min-height:0，44 行）
+- `base.css` 已删除（67 行未使用变量）
+
+### 0.4 IPC 监听器生命周期
+- `useAppIpcListeners` 内部使用 `onMounted`/`onUnmounted` 自动注册/注销
+- 所有 IPC 监听器集中管理，避免泄漏
+
+### 0.5 模板 Ref 绑定模式
+- composable 如需访问组件模板 ref，由 App.vue 创建 `ref<InstanceType>` 后传入
+- composable 通过 `menuEl.value?.$el.contains()` 检测点击区域（而非直接绑定 HTMLElement）
+
 ## 1. Connection Management
 
 ### 1.1 New Connection
 - Dialog with fields: name, host, port (1-65535), username, password / private key
 - Auth methods: password or private key (file browse or paste content)
-- Connection name auto-filled as `user@host:port` when left empty
+- Connection name auto-filled as `user@host:port` when left empty (computed in component, not in locale to avoid vue-i18n `@` linked format parsing)
+- Port input supports mouse wheel adjustment: scroll up +1 (Shift +10), scroll down -1 (Shift -10), clamped to [1, 65535]
 - "Exec command" field: command sent to shell immediately after PTY opens
 
 ### 1.2 Session Persistence
@@ -52,13 +80,16 @@
 - Zoom: 1.0-3.0 (step 0.1, slider in Settings, apply on release)
   - During drag: CSS `transform: scale()` preview with `top left` origin
   - On apply: `webFrame.setZoomFactor()` persisted to settings
-- Fit addon: auto-resize terminal to container on init and on window resize (debounced 200ms)
+- Fit addon: auto-resize terminal to container on init, on window resize, and on panel dock/undock/resize
+- Panel resize trigger: `App.vue` watches `[sessionsPinned, queuePinned, sessionPanelWidth, queuePanelWidth]` → `nextTick` → `focusAndFit()` on active session
+- CSS width constraint chain: `.session-wrapper` + `.terminal-container` must have `min-width: 0` to allow shrinkage when panels are docked
 - Search addon available
 
 ### 3.2 Terminal I/O
 - Keyboard input → IPC → SSH shell write
 - Shell output → IPC → terminal write
 - Terminal resize → IPC → PTY resize (debounced 200ms)
+- PTY initial size: `client.shell({ cols, rows })` uses actual terminal dimensions (from `fitAddon.fit()`) instead of ssh2 default 80×24, avoiding zsh `%` artifacts from post-connect resize
 - SSH resize grace period: 500ms after connection, resize buffered (not sent) to avoid zsh PROMPT_EOL_MARK `%` artifacts
 - Context menu: Copy (right-click on selection)
 
@@ -137,6 +168,7 @@
 - **No `beforeunload` persistence**: window state writes exclusively from main process to avoid renderer IPC queue overwriting correct data
 - Resize overlay: centered `W × H` shown briefly on resize, fades after 500ms
 - **Flex 高度约束链**：`.main-area` 和 `.main-vertical` 必须设置 `min-height: 0`；`.content` 和 `.session-wrapper` 必须设置 `display: flex; flex-direction: column; min-height: 0`，否则窗口缩小时终端内容会被 `overflow: hidden` 裁剪且不产生滚动条
+- **Flex 宽度约束链**：面板固定时 `.main-vertical` 通过 `paddingLeft`/`paddingRight` 缩窄内容区域。`.main-vertical`、`.content`、`.session-wrapper`、`.terminal-container` 必须设置 `min-width: 0`，否则 xterm 内容会溢出到 padding 区域。`.main-vertical` 还需 `overflow: hidden` 建立视觉裁剪边界
 
 ### 6.3 Sidebar
 - Vertical toolbar with icon buttons:
@@ -151,9 +183,13 @@
 - Export / Import buttons in header (SVG icons)
 - Drag-and-drop reorder with blue top/bottom border indicator
 - Edit (pencil) / Delete (×) per session
+- Right-edge 4px resize handle: drag to adjust panel width (160–500px), persisted to settings
+- Width change triggers terminal re-fit via watch
 
 ### 6.5 Transfer Queue
 - Floating panel with Uploads / Downloads sub-tabs
+- Left-edge 4px resize handle: drag to adjust panel width (200–600px), persisted to settings
+- Width change triggers terminal re-fit via watch
 - Per-item buttons:
   - active: ⏸ Pause, ✕ Cancel
   - paused: ▶ Resume, ✕ Cancel

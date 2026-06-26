@@ -140,7 +140,6 @@ export class SFTPManager {
     onProgress?: (t: number, total: number) => void
   ): Promise<void> {
     const sftp = await this.getSftp(id)
-    const fs = require('fs') as typeof import('fs')
 
     return new Promise((resolve, reject) => {
       const stat = fs.statSync(localPath)
@@ -311,7 +310,6 @@ export class SFTPManager {
     onProgress?: (t: number, total: number) => void,
     startOffset?: number
   ): Promise<void> {
-    const self = this
     const sftp = await this.getSftp(id)
     return new Promise<void>((resolve, reject) => {
       sftp.open(remotePath, 'r', 0o644, (err, handle) => {
@@ -363,17 +361,19 @@ export class SFTPManager {
             reject,
             onProgress
           }
-          self.controlledTransfers.set(transferId, transfer)
+          this.controlledTransfers.set(transferId, transfer)
 
           const cleanup = (): void => {
             if (progressTimer) {
               clearTimeout(progressTimer)
               progressTimer = null
             }
-            self.controlledTransfers.delete(transferId)
+            this.controlledTransfers.delete(transferId)
             try {
               fs.closeSync(localFd)
-            } catch {}
+            } catch (e) {
+              console.error('[sftp] failed to close fd on download complete:', e)
+            }
             sftp.close(handle, () => {})
           }
 
@@ -471,7 +471,6 @@ export class SFTPManager {
     if (!t || !t.paused) return false
     if (t.chunks && !t.cancelled) {
       t.paused = false
-      const self = this
       const transfer = t
       // 确保 nextChunkIdx 已计算（兼容暂停前的旧数据）
       if (transfer.nextChunkIdx == null) {
@@ -510,9 +509,11 @@ export class SFTPManager {
               if (progressTimer) clearTimeout(progressTimer)
               try {
                 fs.closeSync(localFd)
-              } catch {}
+              } catch (e) {
+                console.error('[sftp] failed to close fd on chunk read error:', e)
+              }
               sftp.close(handle, () => {})
-              self.controlledTransfers.delete(tid)
+              this.controlledTransfers.delete(tid)
               transfer.reject?.(err)
               return
             }
@@ -524,9 +525,11 @@ export class SFTPManager {
                   if (progressTimer) clearTimeout(progressTimer)
                   try {
                     fs.closeSync(localFd)
-                  } catch {}
+                  } catch (e) {
+                    console.error('[sftp] failed to close fd on chunk write error:', e)
+                  }
                   sftp.close(handle, () => {})
-                  self.controlledTransfers.delete(tid)
+                  this.controlledTransfers.delete(tid)
                   transfer.reject?.(err)
                   return
                 }
@@ -567,9 +570,11 @@ export class SFTPManager {
           if (progressTimer) clearTimeout(progressTimer)
           try {
             fs.closeSync(localFd)
-          } catch {}
+          } catch (e) {
+            console.error('[sftp] failed to close fd on resume complete:', e)
+          }
           sftp.close(handle, () => {})
-          self.controlledTransfers.delete(tid)
+          this.controlledTransfers.delete(tid)
           transfer.resolve?.()
         }
       }
@@ -589,7 +594,9 @@ export class SFTPManager {
       if (t.localFd !== undefined) {
         try {
           fs.closeSync(t.localFd)
-        } catch {}
+        } catch (e) {
+          console.error('[sftp] failed to close fd on cancel:', e)
+        }
       }
       t.sftp.close(t.handle, () => {})
       this.controlledTransfers.delete(tid)
@@ -613,7 +620,9 @@ export class SFTPManager {
         if (t.localFd !== undefined) {
           try {
             fs.closeSync(t.localFd)
-          } catch {}
+          } catch (e) {
+            console.error('[sftp] failed to close fd on cancelAll:', e)
+          }
         }
       } else {
         t.readStream?.destroy()
@@ -635,7 +644,9 @@ export class SFTPManager {
         if (t.chunks && t.localFd !== undefined) {
           try {
             fs.closeSync(t.localFd)
-          } catch {}
+          } catch (e) {
+            console.error('[sftp] failed to close fd on disconnect:', e)
+          }
         } else {
           t.readStream?.destroy()
           t.writeStream?.destroy()

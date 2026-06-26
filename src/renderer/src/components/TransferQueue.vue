@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useTransferStore, TransferItem } from '../stores/transfer'
 import { showToast } from '../utils/toast'
+import { usePanelResize } from '../composables/usePanelResize'
 
 const {
   items,
@@ -14,9 +15,30 @@ const {
 } = useTransferStore()
 const transferStore = useTransferStore()
 
-defineProps<{
+const props = defineProps<{
   docked?: boolean
+  width?: number
 }>()
+
+const emit = defineEmits<{
+  close: []
+  'update:pinned': [value: boolean]
+  'update:width': [value: number]
+}>()
+
+const localWidth = ref(props.width ?? 340)
+watch(
+  () => props.width,
+  (v) => {
+    if (v !== undefined) localWidth.value = v
+  }
+)
+const { onResizeStart } = usePanelResize(localWidth, {
+  minWidth: 200,
+  maxWidth: 600,
+  direction: 'left'
+})
+watch(localWidth, (v) => emit('update:width', v))
 
 const activeTab = ref<'upload' | 'download'>(lastActiveTab.value)
 
@@ -39,11 +61,6 @@ function progressPercent(item: TransferItem): number {
   if (item.total <= 0) return 0
   return Math.min(100, Math.round((item.transferred / item.total) * 100))
 }
-
-const emit = defineEmits<{
-  close: []
-  'update:pinned': [value: boolean]
-}>()
 
 function closeOverlay(): void {
   emit('close')
@@ -104,7 +121,8 @@ onUnmounted(() => {
 
 <template>
   <div v-if="!docked" class="queue-overlay" @click="closeOverlay"></div>
-  <div class="queue-panel" :class="{ docked }">
+  <div class="queue-panel" :class="{ docked }" :style="{ width: localWidth + 'px' }">
+    <div class="queue-resize-handle" @mousedown="onResizeStart"></div>
     <div class="queue-header">
       <div class="queue-header-left">
         <span>{{ $t('transferQueue.title') }}</span>
@@ -321,12 +339,28 @@ onUnmounted(() => {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 340px;
   background: var(--bg-surface);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   font-size: 12px;
+}
+
+.queue-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 1000;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.queue-resize-handle:hover,
+.queue-resize-handle:active {
+  background: var(--accent);
 }
 
 .queue-header-left {

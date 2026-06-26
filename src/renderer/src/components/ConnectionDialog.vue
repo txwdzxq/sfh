@@ -29,6 +29,16 @@ const execCommand = ref('')
 const name = ref('')
 const show = ref(true)
 
+function onPortWheel(e: WheelEvent): void {
+  const step = e.shiftKey ? 10 : 1
+  const delta = e.deltaY < 0 ? step : -step
+  port.value = Math.max(1, Math.min(65535, (port.value || 22) + delta))
+}
+
+const displayPlaceholder = computed(
+  () => `${username.value || 'user'}@${host.value || 'host'}:${port.value}`
+)
+
 const { t } = useI18n()
 
 const portError = computed(() => {
@@ -119,16 +129,7 @@ async function selectKeyFile(): Promise<void> {
         <div class="dialog-body">
           <div class="form-group">
             <label>{{ $t('connectionDialog.label.name') }}</label>
-            <input
-              v-model="name"
-              :placeholder="
-                $t('connectionDialog.placeholder.displayName', {
-                  user: username || 'user',
-                  host: host || 'host',
-                  port
-                })
-              "
-            />
+            <input v-model="name" :placeholder="displayPlaceholder" />
           </div>
           <div class="form-row">
             <div class="form-group flex-grow">
@@ -137,7 +138,13 @@ async function selectKeyFile(): Promise<void> {
             </div>
             <div class="form-group port-group">
               <label>{{ $t('connectionDialog.label.port') }}</label>
-              <input v-model.number="port" type="number" min="1" max="65535" />
+              <input
+                v-model.number="port"
+                type="number"
+                min="1"
+                max="65535"
+                @wheel.prevent="onPortWheel"
+              />
               <span v-if="portError" class="field-error">{{ portError }}</span>
             </div>
           </div>

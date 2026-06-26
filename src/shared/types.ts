@@ -20,6 +20,8 @@ export interface AppSettings {
   showQueueOnDownload: boolean
   sessionsPinned: boolean
   queuePinned: boolean
+  sessionPanelWidth: number
+  queuePanelWidth: number
   downloadMode: 'chunk' | 'stream'
   opacity: number
 }

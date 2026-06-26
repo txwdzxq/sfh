@@ -26,6 +26,8 @@ const defaults: AppSettings = {
   showQueueOnDownload: false,
   sessionsPinned: false,
   queuePinned: false,
+  sessionPanelWidth: 240,
+  queuePanelWidth: 340,
   downloadMode: 'chunk' as 'chunk' | 'stream',
   opacity: 100
 }
@@ -88,6 +90,8 @@ export function useSettingsStore() {
       showQueueOnDownload: state.showQueueOnDownload,
       sessionsPinned: state.sessionsPinned,
       queuePinned: state.queuePinned,
+      sessionPanelWidth: state.sessionPanelWidth,
+      queuePanelWidth: state.queuePanelWidth,
       downloadMode: state.downloadMode,
       opacity: state.opacity
     }
@@ -133,14 +137,6 @@ export function useSettingsStore() {
     state.showQueueOnDownload = val
   }
 
-  function setSessionsPinned(val: boolean): void {
-    state.sessionsPinned = val
-  }
-
-  function setQueuePinned(val: boolean): void {
-    state.queuePinned = val
-  }
-
   function setDownloadMode(val: 'chunk' | 'stream'): void {
     state.downloadMode = val
   }
@@ -167,8 +163,6 @@ export function useSettingsStore() {
     setDefaultDownloadPath,
     setAskDownloadLocation,
     setShowQueueOnDownload,
-    setSessionsPinned,
-    setQueuePinned,
     setDownloadMode,
     setOpacity,
     flush

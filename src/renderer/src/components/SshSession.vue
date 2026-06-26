@@ -31,11 +31,14 @@ defineExpose({ focusAndFit })
 let active = true
 
 onMounted(async () => {
+  // 连接前获取终端实际尺寸，确保 PTY 以正确列数创建，避免 zsh PROMPT_EOL_MARK % 溢出
+  await nextTick()
+  const dims = terminalRef.value?.fitAndGetDimensions?.()
   console.log(
-    `[session] connecting tab=${props.tabId} ${props.config.username}@${props.config.host}:${props.config.port}`
+    `[session] connecting tab=${props.tabId} ${props.config.username}@${props.config.host}:${props.config.port} cols=${dims?.cols ?? 80} rows=${dims?.rows ?? 24}`
   )
   try {
-    await window.api.connect(props.tabId, { ...props.config })
+    await window.api.connect(props.tabId, { ...props.config }, dims?.cols, dims?.rows)
     if (!active) return // 已卸载，忽略结果
     console.log(`[session] connected tab=${props.tabId}`)
     status.value = 'connected'

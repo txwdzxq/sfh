@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // 会话列表面板 — 浮动显示已保存的连接，支持选择连接、编辑和删除
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { SshConnection } from '../../../main/ssh/types'
+import { usePanelResize } from '../composables/usePanelResize'
 
-defineProps<{
+const props = defineProps<{
   sessions: SshConnection[]
   docked?: boolean
+  width?: number
 }>()
 
 const emit = defineEmits<{
@@ -18,7 +20,22 @@ const emit = defineEmits<{
   import: []
   reorder: [fromIndex: number, toIndex: number]
   'update:pinned': [value: boolean]
+  'update:width': [value: number]
 }>()
+
+const localWidth = ref(props.width ?? 240)
+watch(
+  () => props.width,
+  (v) => {
+    if (v !== undefined) localWidth.value = v
+  }
+)
+const { onResizeStart } = usePanelResize(localWidth, {
+  minWidth: 160,
+  maxWidth: 500,
+  direction: 'right'
+})
+watch(localWidth, (v) => emit('update:width', v))
 
 const dragIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
@@ -57,7 +74,8 @@ function onDragEnd(): void {
 <template>
   <!-- 遮罩层：仅浮动模式显示 -->
   <div v-if="!docked" class="panel-overlay" @click="closeOverlay"></div>
-  <div class="panel" :class="{ docked }">
+  <div class="panel" :class="{ docked }" :style="{ width: localWidth + 'px' }">
+    <div class="resize-handle" @mousedown="onResizeStart"></div>
     <div class="panel-header">
       <div class="panel-header-left">
         <span class="panel-title">{{ $t('sessionsPanel.title') }}</span>
@@ -211,13 +229,29 @@ function onDragEnd(): void {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 240px;
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   z-index: 10;
   overflow: hidden;
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 11;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--accent);
 }
 
 .panel-header {

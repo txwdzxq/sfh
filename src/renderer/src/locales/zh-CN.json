@@ -58,7 +58,7 @@
   "connectionDialog.portError": "端口范围 1-65535",
   "connectionDialog.authError.password": "密码不能为空",
   "connectionDialog.authError.key": "请粘贴私钥或选择文件",
-  "connectionDialog.placeholder.displayName": "{user}@{host}:{port}",
+
   "connectionDialog.placeholder.privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
   "connectionDialog.cancel": "取消",
   "connectionDialog.connect": "连接",

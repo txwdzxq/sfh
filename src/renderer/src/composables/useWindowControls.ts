@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 
 export function useWindowControls(
   persistFn: () => Promise<void>,
@@ -35,19 +35,12 @@ export function useWindowControls(
     pendingClose.value = false
   }
 
-  function onBeforeUnload(): void {
-    persistFn()
-  }
-
   return {
     minimizeWindow,
     maximizeWindow,
     closeWindow,
     confirmClose,
     cancelClose,
-    pendingClose,
-    onBeforeUnload
+    pendingClose
   }
 }
-
-import { ref } from 'vue'

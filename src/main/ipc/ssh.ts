@@ -135,12 +135,18 @@ export function registerSshIpc(): void {
   // invoke/handle 模式：连接（等待结果）
   ipcMain.handle(
     IPC.SSH_CONNECT,
-    async (_event, id: string, config: SshConnectionConfig): Promise<void> => {
+    async (
+      _event,
+      id: string,
+      config: SshConnectionConfig,
+      cols?: number,
+      rows?: number
+    ): Promise<void> => {
       if (!id || typeof id !== 'string') throw new Error('Invalid id')
       validateConfig(config)
       console.log(`[ipc] ssh:connect id=${id}`)
       try {
-        await sshManager.connect(id, config)
+        await sshManager.connect(id, config, cols, rows)
       } catch (err) {
         throw sanitizeSshError(err)
       }

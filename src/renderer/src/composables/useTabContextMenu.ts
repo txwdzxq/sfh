@@ -1,8 +1,8 @@
-import { ref, nextTick, onUnmounted } from 'vue'
+import { ref, nextTick, onUnmounted, type Ref } from 'vue'
+import type TabContextMenu from '../components/TabContextMenu.vue'
 
-export function useTabContextMenu() {
+export function useTabContextMenu(menuEl: Ref<InstanceType<typeof TabContextMenu> | null>) {
   const contextMenu = ref<{ x: number; y: number; tabId: string } | null>(null)
-  const menuEl = ref<HTMLElement | null>(null)
   let menuCleanup: (() => void) | null = null
 
   onUnmounted(() => {
@@ -25,10 +25,11 @@ export function useTabContextMenu() {
   }
 
   function onDocumentMouseDown(e: MouseEvent): void {
-    if (menuEl.value && !menuEl.value.contains(e.target as Node)) {
+    const root = menuEl.value?.$el
+    if (root && !root.contains(e.target as Node)) {
       closeContextMenu()
     }
   }
 
-  return { contextMenu, menuEl, openContextMenu, closeContextMenu }
+  return { contextMenu, openContextMenu, closeContextMenu }
 }
